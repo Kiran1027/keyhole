@@ -1,0 +1,52 @@
+publlic key : vtdfmxzx
+
+private key : a2fd4d39-6567-43ed-9dfa-b2751ff71d04
+
+curl -u "${ATLAS_API_KEY}:" "https://cloud.mongodb.com/api/atlas/v1.0/groups/60f6ed508b8b1b6d8f916243/clusters/TestCluster/processes"
+
+
+curl --user "vtdfmxzx:a2fd4d39-6567-43ed-9dfa-b2751ff71d04" --digest GET "https://cloud.mongodb.com/api/atlas/v1.0/groups/60f6ed508b8b1b6d8f916243/clusters/TestCluster/processes"
+
+
+
+
+curl --user 'vtdfmxzx:a2fd4d39-6567-43ed-9dfa-b2751ff71d04' --digest --header "Accept: application/vnd.atlas.2023-02-01+json" --include --request GET "https://cloud.mongodb.com/api/atlas/v1.0/groups/60f6ed508b8b1b6d8f916243/clusters/TestCluster/processes"
+
+curl --user "vtdfmxzx:a2fd4d39-6567-43ed-9dfa-b2751ff71d04" --digest --header "Accept: application/vnd.atlas.2023-02-01+json" GET "https://cloud.mongodb.com/api/atlas/v2/groups/60f6ed508b8b1b6d8f916243/dbAccessHistory/clusters/TestCluster?pretty=true"
+
+
+curl --user "vtdfmxzx:a2fd4d39-6567-43ed-9dfa-b2751ff71d04" --digest --header "Accept: application/vnd.atlas.2023-02-01+json" GET "https://cloud.mongodb.com/api/atlas/v2/groups/60f6ed508b8b1b6d8f916243/alerts"
+
+
+Working:
+==================================================================================================
+
+curl --user "vtdfmxzx:a2fd4d39-6567-43ed-9dfa-b2751ff71d04" --digest --header "Accept: application/vnd.atlas.2023-02-01+json" "https://cloud.mongodb.com/api/atlas/v2/groups/60f6ed508b8b1b6d8f916243/clusters/TestCluster"
+
+curl --user "vtdfmxzx:a2fd4d39-6567-43ed-9dfa-b2751ff71d04" --digest --header "Accept: application/vnd.atlas.2023-02-01+json" "https://cloud.mongodb.com/v2/60f6ed508b8b1b6d8f916243#/host/replicaSet/659df08299e7cf45c2730096"
+
+curl --user "publickey:privatekey" --digest --header "Accept: application/vnd.atlas.2023-02-01+json" "https://cloud.mongodb.com/api/atlas/v2/groups/60f6ed508b8b1b6d8f916243/processes"
+
+
+curl --user "publickey:privatekey" --digest --header "Accept: application/vnd.atlas.2023-02-01+json"  "https://cloud.mongodb.com/api/atlas/v2/groups/60f6ed508b8b1b6d8f916243/processes/atlas-qtevhp-shard-00-02.hhn0w.mongodb.net:27017/measurements?granularity=PT1H&start=2024-01-15T00:00:00Z&end=2024-01-16T00:00:00Z"
+
+
+===============================================================================================
+
+../measurements?m=CONNECTIONS&m=OPCOUNTER_CMD&m=OPCOUNTER_QUERY
+
+
+curl --user "vtdfmxzx:a2fd4d39-6567-43ed-9dfa-b2751ff71d04" --digest --header "Accept: application/vnd.atlas.2023-02-01+json" "https://cloud.mongodb.com/api/public/v1.0/groups/60f6ed508b8b1b6d8f916243/hosts/9c1814516d366efb983ac0ad76585630/measurements"
+
+
+https://cloud.mongodb.com/v2/60f6ed508b8b1b6d8f916243#/metrics/host/9c1814516d366efb983ac0ad76585630/status
+
+atlas alerts list --projectId 60f6ed508b8b1b6d8f916243
+
+
+curl --user "vtdfmxzx:a2fd4d39-6567-43ed-9dfa-b2751ff71d04" --digest --header "Accept: application/json" --include --request GET "https://cloud.mongodb.com/api/atlas/v1.0/groups/637bec0c2769ec0c8130fc54/hosts/c501ba9b351ac16a477516c20e0cec7e/measurements?granularity=PT5M&period=PT5M"
+
+
+https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/processes
+
+

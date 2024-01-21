@@ -1,0 +1,119 @@
+#!/bin/bash
+
+# MongoDB Atlas API base URL
+BASE_URL="https://cloud.mongodb.com/api/atlas/v1.0"
+
+# MongoDB Atlas API Public Key and Private Key
+PUBLIC_KEY="your_public_key"
+PRIVATE_KEY="your_private_key"
+
+# MongoDB Atlas Organization ID
+ORG_ID="your_organization_id"
+
+# MongoDB Atlas API endpoint to fetch all projects in the organization
+PROJECTS_ENDPOINT="/orgs/${ORG_ID}/projects"
+
+# Construct the full URL for fetching projects
+PROJECTS_URL="${BASE_URL}${PROJECTS_ENDPOINT}"
+
+# MongoDB Atlas API headers
+HEADERS="Content-Type: application/json"
+
+# MongoDB Atlas API authentication
+AUTH="-u ${PUBLIC_KEY}:${PRIVATE_KEY}"
+
+# Make a GET request to fetch all projects
+projects_response=$(curl -s -X GET -H "${HEADERS}" ${AUTH} ${PROJECTS_URL})
+
+# Extract project IDs from the response
+project_ids=$(echo "${projects_response}" | jq -r '.results[].id')
+
+# Loop through each project ID
+for project_id in ${project_ids}; do
+    # MongoDB Atlas API endpoint to fetch all clusters in a project
+    CLUSTERS_ENDPOINT="/groups/${project_id}/clusters"
+
+    # Construct the full URL for fetching clusters in the project
+    CLUSTERS_URL="${BASE_URL}${CLUSTERS_ENDPOINT}"
+
+    # Make a GET request to fetch all clusters in the project
+    clusters_response=$(curl -s -X GET -H "${HEADERS}" ${AUTH} ${CLUSTERS_URL})
+
+    # Extract cluster names from the response
+    cluster_names=$(echo "${clusters_response}" | jq -r '.results[].name')
+
+    # Loop through each cluster name
+    for cluster_name in ${cluster_names}; do
+        # MongoDB Atlas API endpoint to fetch metrics for a cluster
+        METRICS_ENDPOINT="/groups/${project_id}/clusters/${cluster_name}/processes"
+
+        # Construct the full URL for fetching metrics for the cluster
+        METRICS_URL="${BASE_URL}${METRICS_ENDPOINT}"
+
+        # Make a GET request to fetch metrics for the cluster
+        metrics_response=$(curl -s -X GET -H "${HEADERS}" ${AUTH} ${METRICS_URL})
+
+        # Print metrics data (replace this with your processing logic)
+        echo "Metrics for ${project_id}/${cluster_name}:"
+        echo "${metrics_response}"
+        echo "--------------------------------------------------------"
+    done
+done
+===========================================================================================================
+Power shell script
+
+# MongoDB Atlas API base URL
+$baseUrl = "https://cloud.mongodb.com/api/atlas/v1.0"
+
+# MongoDB Atlas API Public Key and Private Key
+$publicKey = "your_public_key"
+$privateKey = "your_private_key"
+
+# MongoDB Atlas Organization ID
+$orgId = "your_organization_id"
+
+# MongoDB Atlas API endpoint to fetch all projects in the organization
+$projectsEndpoint = "/orgs/$orgId/projects"
+
+# Construct the full URL for fetching projects
+$projectsUrl = "$baseUrl$projectsEndpoint"
+
+# MongoDB Atlas API headers
+$headers = @{
+    "Content-Type" = "application/json"
+}
+
+# MongoDB Atlas API authentication
+$auth = "-u $publicKey:$privateKey"
+
+# Make a GET request to fetch all projects
+$projectsResponse = Invoke-RestMethod -Uri $projectsUrl -Headers $headers -Method Get -Authentication Basic -Credential $auth
+
+# Loop through each project
+foreach ($project in $projectsResponse.results) {
+    # MongoDB Atlas API endpoint to fetch all clusters in a project
+    $clustersEndpoint = "/groups/$($project.id)/clusters"
+
+    # Construct the full URL for fetching clusters in the project
+    $clustersUrl = "$baseUrl$clustersEndpoint"
+
+    # Make a GET request to fetch all clusters in the project
+    $clustersResponse = Invoke-RestMethod -Uri $clustersUrl -Headers $headers -Method Get -Authentication Basic -Credential $auth
+
+    # Loop through each cluster
+    foreach ($cluster in $clustersResponse.results) {
+        # MongoDB Atlas API endpoint to fetch metrics for a cluster
+        $metricsEndpoint = "/groups/$($project.id)/clusters/$($cluster.name)/processes"
+
+        # Construct the full URL for fetching metrics for the cluster
+        $metricsUrl = "$baseUrl$metricsEndpoint"
+
+        # Make a GET request to fetch metrics for the cluster
+        $metricsResponse = Invoke-RestMethod -Uri $metricsUrl -Headers $headers -Method Get -Authentication Basic -Credential $auth
+
+        # Print metrics data (replace this with your processing logic)
+        Write-Host "Metrics for $($project.id)/$($cluster.name):"
+        $metricsResponse
+        Write-Host "--------------------------------------------------------"
+    }
+}

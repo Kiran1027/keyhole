@@ -1,0 +1,51 @@
+
+$username = "zfgdkryh"
+$password = ConvertTo-SecureString "c7c49878-e8be-43db-ba09-473cb2bf645f" -AsPlainText -Force
+$credential = New-Object System.Management.Automation.PSCredential($username, $password)
+$apiURL = "https://cloud.mongodb.com/api/atlas/v2/groups/656639f67f8edf7a8e1062ce/processes?pretty=true"
+$headers = @{
+    "Accept" = "application/vnd.atlas.2023-02-01+json"
+}
+$response = Invoke-RestMethod -Uri $apiURL  -Credential $credential  -Headers $headers
+
+$response
+
+$jsonString = $response | ConvertTo-Json -Depth 100
+
+$jsonString
+
+  $jsonString | Out-File -FilePath "output3.json" -Encoding UTF8
+
+$formattedResponse = $jsonString | ConvertTo-Json -Depth 10 | ConvertFrom-Json | Format-Table -AutoSize
+
+    # Write the formatted response to a file
+    $formattedResponse | Out-File -FilePath "output2.csv" -Encoding UTF8
+
+
+
+
+
+
+curl --user "onlczuym:db7b12ac-d35f-4f52-aee6-33bb37f4ba23" --digest --header "Accept: application/vnd.atlas.2023-02-01+json" "https://cloud.mongodb.com/api/atlas/v2/groups/60f6ed508b8b1b6d8f916243/processes"
+
+
+=================================================================================================================================================================
+
+
+curl --user "zfgdkryh:c7c49878-e8be-43db-ba09-473cb2bf645f" --digest --header "Accept: application/vnd.atlas.2023-02-01+json"  "https://cloud.mongodb.com/api/atlas/v2/groups/656639f67f8edf7a8e1062ce/processes/atlas-z9idw7-shard-00-02.xwl4k.mongodb.net:27017/measurements?granularity=PT1H&start=2024-04-03T00:00:00Z&end=2024-04-04T00:00:00Z"
+
+
+$username = "zfgdkryh"
+$password = ConvertTo-SecureString "c7c49878-e8be-43db-ba09-473cb2bf645f" -AsPlainText -Force
+$credential = New-Object System.Management.Automation.PSCredential($username, $password)
+$apiURL = "https://cloud.mongodb.com/api/atlas/v2/groups/656639f67f8edf7a8e1062ce/processes/atlas-z9idw7-shard-00-02.xwl4k.mongodb.net:27017/measurements?granularity=PT1H&start=2024-04-03T00:00:00Z&end=2024-04-04T00:00:00Z"
+$headers = @{
+    "Accept" = "application/vnd.atlas.2023-02-01+json"
+}
+$response = Invoke-RestMethod -Uri $apiURL  -Credential $credential  -Headers $headers
+
+$response
+
+$jsonString = $response | ConvertTo-Json -Depth 100
+
+$jsonString

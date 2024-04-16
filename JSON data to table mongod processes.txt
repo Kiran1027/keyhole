@@ -1,0 +1,226 @@
+# JSON data
+$json = @"
+{
+    "links":  [
+                  {
+                      "href":  "https://cloud.mongodb.com/api/atlas/v2/groups/656639f67f8edf7a8e1062ce/processes?pretty=true\u0026pageNum=1\u0026itemsPerPage=100",
+                      "rel":  "self"
+                  }
+              ],
+    "results":  [
+                    {
+                        "created":  "2023-11-28T19:20:51Z",
+                        "groupId":  "656639f67f8edf7a8e1062ce",
+                        "hostname":  "atlas-z9idw7-shard-00-00.xwl4k.mongodb.net",
+                        "id":  "atlas-z9idw7-shard-00-00.xwl4k.mongodb.net:27017",
+                        "lastPing":  "2024-04-11T23:17:39Z",
+                        "links":  [
+                                      {
+                                          "href":  "https://cloud.mongodb.com/api/atlas/v2/groups/656639f67f8edf7a8e1062ce/processes/atlas-z9idw7-shard-00-00.xwl4k.mongodb.net:27017",
+                                          "rel":  "self"
+                                      }
+                                  ],
+                        "port":  27017,
+                        "replicaSetName":  "atlas-z9idw7-shard-0",
+                        "typeName":  "REPLICA_SECONDARY",
+                        "userAlias":  "guestjourneyops-dev-shard-00-00.xwl4k.mongodb.net",
+                        "version":  "6.0.14"
+                    },
+                    {
+                        "created":  "2023-11-28T19:20:51Z",
+                        "groupId":  "656639f67f8edf7a8e1062ce",
+                        "hostname":  "atlas-z9idw7-shard-00-01.xwl4k.mongodb.net",
+                        "id":  "atlas-z9idw7-shard-00-01.xwl4k.mongodb.net:27017",
+                        "lastPing":  "2024-04-11T23:17:39Z",
+                        "links":  [
+                                      {
+                                          "href":  "https://cloud.mongodb.com/api/atlas/v2/groups/656639f67f8edf7a8e1062ce/processes/atlas-z9idw7-shard-00-01.xwl4k.mongodb.net:27017",
+                                          "rel":  "self"
+                                      }
+                                  ],
+                        "port":  27017,
+                        "replicaSetName":  "atlas-z9idw7-shard-0",
+                        "typeName":  "REPLICA_SECONDARY",
+                        "userAlias":  "guestjourneyops-dev-shard-00-01.xwl4k.mongodb.net",
+                        "version":  "6.0.14"
+                    },
+                    {
+                        "created":  "2023-11-28T19:20:51Z",
+                        "groupId":  "656639f67f8edf7a8e1062ce",
+                        "hostname":  "atlas-z9idw7-shard-00-02.xwl4k.mongodb.net",
+                        "id":  "atlas-z9idw7-shard-00-02.xwl4k.mongodb.net:27017",
+                        "lastPing":  "2024-04-11T23:17:39Z",
+                        "links":  [
+                                      {
+                                          "href":  "https://cloud.mongodb.com/api/atlas/v2/groups/656639f67f8edf7a8e1062ce/processes/atlas-z9idw7-shard-00-02.xwl4k.mongodb.net:27017",
+                                          "rel":  "self"
+                                      }
+                                  ],
+                        "port":  27017,
+                        "replicaSetName":  "atlas-z9idw7-shard-0",
+                        "typeName":  "REPLICA_PRIMARY",
+                        "userAlias":  "guestjourneyops-dev-shard-00-02.xwl4k.mongodb.net",
+                        "version":  "6.0.14"
+                    }
+                ],
+    "totalCount":  3
+}
+"@
+
+# Convert JSON to PowerShell object
+$object = ConvertFrom-Json $json
+
+# Define SQL Server connection details
+$server = "your_server_name"
+$database = "your_database_name"
+$table = "MongoDBProcesses"
+$connectionString = "Server=$server;Database=$database;Integrated Security=True"
+$connection = New-Object System.Data.SqlClient.SqlConnection($connectionString)
+
+# Define SQL command to create table
+$createTableQuery = @"
+CREATE TABLE $table (
+    id VARCHAR(255) PRIMARY KEY,
+    groupId VARCHAR(255),
+    hostname VARCHAR(255),
+    port INT,
+    replicaSetName VARCHAR(255),
+    typeName VARCHAR(255),
+    userAlias VARCHAR(255),
+    version VARCHAR(255),
+    created DATETIME,
+    lastPing DATETIME
+)
+"@
+
+# Execute SQL command to create table
+$command = New-Object System.Data.SqlClient.SqlCommand($createTableQuery, $connection)
+$connection.Open()
+$command.ExecuteNonQuery()
+$connection.Close()
+
+# Define SQL command to insert data
+$insertQuery = "INSERT INTO $table (id, groupId, hostname, port, replicaSetName, typeName, userAlias, version, created, lastPing) VALUES"
+
+# Loop through JSON results and build insert queries
+foreach ($result in $object.results) {
+    $values = "('"+$result.id+"','"+$result.groupId+"','"+$result.hostname+"',"+$result.port+",'"+$result.replicaSetName+"','"+$result.typeName+"','"+$result.userAlias+"','"+$result.version+"','"+$result.created+"','"+$result.lastPing+"')"
+    $insertQuery += " " + $values + ","
+}
+
+# Remove trailing comma
+$insertQuery = $insertQuery.TrimEnd(',')
+
+# Execute SQL command to insert data
+$command = New-Object System.Data.SqlClient.SqlCommand($insertQuery, $connection)
+$connection.Open()
+$command.ExecuteNonQuery()
+$connection.Close()
+
+Write-Host "Data inserted into SQL Server table successfully."
+
+
+
+=============================================================================================================
+
+
+
+Second script:
+
+
+
+# JSON data
+$jsonData = '{
+    "links":  [
+                  {
+                      "href":  "https://cloud.mongodb.com/api/atlas/v2/groups/656639f67f8edf7a8e1062ce/processes?pretty=true\u0026pageNum=1\u0026itemsPerPage=100",
+                      "rel":  "self"
+                  }
+              ],
+    "results":  [
+                    {
+                        "created":  "2023-11-28T19:20:51Z",
+                        "groupId":  "656639f67f8edf7a8e1062ce",
+                        "hostname":  "atlas-z9idw7-shard-00-00.xwl4k.mongodb.net",
+                        "id":  "atlas-z9idw7-shard-00-00.xwl4k.mongodb.net:27017",
+                        "lastPing":  "2024-04-11T23:17:39Z",
+                        "links":  [
+                                      {
+                                          "href":  "https://cloud.mongodb.com/api/atlas/v2/groups/656639f67f8edf7a8e1062ce/processes/atlas-z9idw7-shard-00-00.xwl4k.mongodb.net:27017",
+                                          "rel":  "self"
+                                      }
+                                  ],
+                        "port":  27017,
+                        "replicaSetName":  "atlas-z9idw7-shard-0",
+                        "typeName":  "REPLICA_SECONDARY",
+                        "userAlias":  "guestjourneyops-dev-shard-00-00.xwl4k.mongodb.net",
+                        "version":  "6.0.14"
+                    },
+                    {
+                        "created":  "2023-11-28T19:20:51Z",
+                        "groupId":  "656639f67f8edf7a8e1062ce",
+                        "hostname":  "atlas-z9idw7-shard-00-01.xwl4k.mongodb.net",
+                        "id":  "atlas-z9idw7-shard-00-01.xwl4k.mongodb.net:27017",
+                        "lastPing":  "2024-04-11T23:17:39Z",
+                        "links":  [
+                                      {
+                                          "href":  "https://cloud.mongodb.com/api/atlas/v2/groups/656639f67f8edf7a8e1062ce/processes/atlas-z9idw7-shard-00-01.xwl4k.mongodb.net:27017",
+                                          "rel":  "self"
+                                      }
+                                  ],
+                        "port":  27017,
+                        "replicaSetName":  "atlas-z9idw7-shard-0",
+                        "typeName":  "REPLICA_SECONDARY",
+                        "userAlias":  "guestjourneyops-dev-shard-00-01.xwl4k.mongodb.net",
+                        "version":  "6.0.14"
+                    },
+                    {
+                        "created":  "2023-11-28T19:20:51Z",
+                        "groupId":  "656639f67f8edf7a8e1062ce",
+                        "hostname":  "atlas-z9idw7-shard-00-02.xwl4k.mongodb.net",
+                        "id":  "atlas-z9idw7-shard-00-02.xwl4k.mongodb.net:27017",
+                        "lastPing":  "2024-04-11T23:17:39Z",
+                        "links":  [
+                                      {
+                                          "href":  "https://cloud.mongodb.com/api/atlas/v2/groups/656639f67f8edf7a8e1062ce/processes/atlas-z9idw7-shard-00-02.xwl4k.mongodb.net:27017",
+                                          "rel":  "self"
+                                      }
+                                  ],
+                        "port":  27017,
+                        "replicaSetName":  "atlas-z9idw7-shard-0",
+                        "typeName":  "REPLICA_PRIMARY",
+                        "userAlias":  "guestjourneyops-dev-shard-00-02.xwl4k.mongodb.net",
+                        "version":  "6.0.14"
+                    }
+                ],
+    "totalCount":  3
+}'
+
+# Convert JSON to PowerShell object
+$object = ConvertFrom-Json $jsonData
+
+# Define an empty array to store extracted data
+$extractedData = @()
+
+# Loop through each result and extract required fields
+foreach ($result in $object.results) {
+    $data = [PSCustomObject]@{
+        projectId = $result.groupId
+        hostname_port = $result.id
+        replicaSetName = $result.replicaSetName
+        clusterCreated = $result.created
+        version = $result.version
+    }
+    $extractedData += $data
+}
+
+# Display extracted data
+$extractedData | Format-Table
+
+# Assuming you have a SQL Server connection established, you can then insert this data into your SQL table
+# For example:
+# $extractedData | foreach {
+#     $insertQuery = "INSERT INTO YourTableName (projectId, hostname_port, replicaSetName, clusterCreated, version) VALUES ('$($_.projectId)', '$($_.hostname_port)', '$($_.replicaSetName)', '$($_.clusterCreated)', '$($_.version)')"
+#     # Execute $insertQuery against your SQL Server connection
+# }
+

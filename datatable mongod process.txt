@@ -1,0 +1,87 @@
+# Load required assemblies
+Add-Type -AssemblyName "System.Data.SqlClient"
+
+# Function to insert data into SQL Server table using SqlBulkCopy
+function Insert-DataIntoSqlServer {
+    param (
+        [string]$sqlConnectionString,
+        [object]$data
+    )
+
+    # Create a SqlConnection object
+    $sqlConnection = New-Object System.Data.SqlClient.SqlConnection($sqlConnectionString)
+
+    # Open the SQL connection
+    $sqlConnection.Open()
+
+    # Create a DataTable to hold the data
+    $dataTable = New-Object System.Data.DataTable
+    $dataTable.Columns.Add("id", [System.String])
+    $dataTable.Columns.Add("groupId", [System.String])
+    $dataTable.Columns.Add("hostname", [System.String])
+    $dataTable.Columns.Add("port", [System.Int32])
+    $dataTable.Columns.Add("replicaSetName", [System.String])
+    $dataTable.Columns.Add("typeName", [System.String])
+    $dataTable.Columns.Add("userAlias", [System.String])
+    $dataTable.Columns.Add("version", [System.String])
+    $dataTable.Columns.Add("created", [System.DateTime])
+    $dataTable.Columns.Add("lastPing", [System.DateTime])
+
+    # Add rows to the DataTable
+    $data.results | ForEach-Object {
+        $row = $dataTable.NewRow()
+        $row["id"] = $_.id
+        $row["groupId"] = $_.groupId
+        $row["hostname"] = $_.hostname
+        $row["port"] = $_.port
+        $row["replicaSetName"] = $_.replicaSetName
+        $row["typeName"] = $_.typeName
+        $row["userAlias"] = $_.userAlias
+        $row["version"] = $_.version
+        $row["created"] = [datetime]$_.created
+        $row["lastPing"] = [datetime]$_.lastPing
+        $dataTable.Rows.Add($row) | Out-Null
+    }
+
+    # Create a SqlBulkCopy object
+    $bulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy($sqlConnection)
+
+    # Set the destination table name
+    $bulkCopy.DestinationTableName = "ProcessInfo"
+
+    # Set the batch size (optional)
+    $bulkCopy.BatchSize = 1000
+
+    # Write the data to the SQL Server table
+    $bulkCopy.WriteToServer($dataTable)
+
+    # Close the SQL connection
+    $sqlConnection.Close()
+
+    Write-Output "Data inserted into SQL Server table successfully."
+}
+
+# Define SQL Server connection details
+$sqlServer = "<SQL Server>"
+$database = "<Database>"
+$username = "<Username>"
+$password = "<Password>"
+
+# Create the SQL Server connection string
+$sqlConnectionString = "Server=$sqlServer;Database=$database;User Id=$username;Password=$password"
+
+# MongoDB Atlas API endpoint
+$atlasApiUrl = "https://cloud.mongodb.com/api/atlas/v2/groups/656639f67f8edf7a8e1062ce/processes"
+
+# MongoDB Atlas API key (replace with your actual API key)
+$apiKey = "<Your MongoDB Atlas API Key>"
+
+# Invoke MongoDB Atlas API to fetch JSON data
+$headers = @{
+    "Content-Type" = "application/json"
+    "Authorization" = "Bearer $apiKey"
+}
+$jsonData = Invoke-RestMethod -Uri $atlasApiUrl -Headers $headers
+
+# Insert data into SQL Server table using bulk copy
+Insert-DataIntoSqlServer -sqlConnectionString $sqlConnectionString -data $jsonData

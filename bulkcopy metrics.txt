@@ -1,0 +1,67 @@
+# Load necessary assemblies for SQL bulk copy
+Add-Type -AssemblyName System.Data.SqlClient
+
+# MongoDB Atlas API variables
+$apiUrl = "https://cloud.mongodb.com/api/atlas/v2/groups/yourGroupId/endpoint"
+$apiKey = "YourAPIKey"  # Use proper authentication mechanism
+
+# SQL Server variables
+$database = "YourDatabase"
+$tableName = "YourTableName"
+$serverName = "YourServerName"
+$connectionString = "Server=$serverName;Database=$database;Integrated Security=True;"  # Update for your auth method
+
+
+function Invoke-MongoDBAPI {
+    $headers = @{ Authorization = "Bearer $apiKey" }
+    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
+    return $response
+}
+
+
+function ConvertTo-DataTable {
+    param($json)
+    $dataTable = New-Object System.Data.DataTable
+
+    # Define columns based on your JSON structure
+    $dataTable.Columns.Add("timestamp", [System.DateTime])
+    $dataTable.Columns.Add("name")
+    $dataTable.Columns.Add("value", [System.Double])
+    $dataTable.Columns.Add("units")
+    $dataTable.Columns.Add("groupId")
+    $dataTable.Columns.Add("hostId")
+    $dataTable.Columns.Add("processId")
+
+    $groupId = $json.groupId
+    $hostId = $json.hostId
+    $processId = $json.processId
+
+    foreach ($measurement in $json.measurements) {
+        foreach ($dataPoint in $measurement.dataPoints) {
+            $row = $dataTable.NewRow()
+            $row.timestamp = $dataPoint.timestamp
+            $row.name = $measurement.name
+            $row.value = $dataPoint.value
+            $row.units = $measurement.units
+            $row.groupId = $groupId
+            $row.hostId = $hostId
+            $row.processId = $processId
+            $dataTable.Rows.Add($row)
+        }
+    }
+    return $dataTable
+}
+
+
+
+function Import-DataTableToSql {
+    param($dataTable)
+    $bulkCopy = New-Object Data.SqlClient.SqlBulkCopy($connectionString, [System.Data.SqlClient.SqlBulkCopyOptions]::KeepIdentity)
+    $bulkCopy.DestinationTableName = $tableName
+    $bulkCopy.WriteToServer($dataTable)
+}
+
+
+$jsonResponse = Invoke-MongoDBAPI
+$dataTable = ConvertTo-DataTable -json $jsonResponse
+Import-DataTableToSql -dataTable $dataTable

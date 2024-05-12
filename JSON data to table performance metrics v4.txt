@@ -1,0 +1,85 @@
+# Load necessary assemblies for SQL operations
+Add-Type -AssemblyName System.Data.SqlClient
+
+# MongoDB Atlas API variables
+$apiUrl = 'Your MongoDB Atlas API URL'  # Update with the actual API URL
+$apiKey = 'Your MongoDB API Key'       # API key for authentication
+
+# SQL Server variables
+$database = 'YourDatabase'
+$tableName = 'YourTableName'
+$serverName = 'YourServerName'
+$connectionString = "Server=$serverName;Database=$database;Integrated Security=True;"  # Update based on your auth
+
+# Function to invoke MongoDB Atlas API
+function Invoke-MongoDBAPI {
+    $headers = @{ Authorization = "Bearer $apiKey" }
+    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers
+    return $response
+}
+
+# Function to convert JSON to DataTable
+function ConvertTo-DataTable {
+    param($json)
+    $dataTable = New-Object System.Data.DataTable
+
+    # Define columns for the DataTable to match SQL Server schema
+    $dataTable.Columns.Add("timestamp", [System.DateTime])
+    $dataTable.Columns.Add("name", [System.String])
+    $dataTable.Columns.Add("value", [System.Double])
+    $dataTable.Columns.Add("units", [System.String])
+    $dataTable.Columns.Add("groupId", [System.String])
+    $dataTable.Columns.Add("hostId", [System.String])
+    $dataTable.Columns.Add("processId", [System.String])
+
+    foreach ($measurement in $json.measurements) {
+        foreach ($dataPoint in $measurement.dataPoints) {
+            $row = $dataTable.NewRow()
+            $row["timestamp"] = [DateTime]::Parse($dataPoint.timestamp)
+            $row["name"] = $measurement.name
+            $row["value"] = $dataPoint.value -as [System.Double]  # Handle possible nulls
+            $row["units"] = $measurement.units
+            $row["groupId"] = $json.groupId
+            $row["hostId"] = $json.hostId
+            $row["processId"] = $json.processId
+            $dataTable.Rows.Add($row)
+        }
+    }
+    return $dataTable
+}
+
+# Function to import DataTable to SQL Server
+function Import-DataTableToSql {
+    param($dataTable)
+    $bulkCopy = New-Object Data.SqlClient.SqlBulkCopy($connectionString, [System.Data.SqlClient.SqlBulkCopyOptions]::KeepIdentity)
+    $bulkCopy.DestinationTableName = $tableName
+
+    # Map columns by name
+    foreach ($column in $dataTable.Columns) {
+        $bulkCopy.ColumnMappings.Add($column.ColumnName, $column.ColumnName)
+    }
+
+    try {
+        $bulkCopy.WriteToServer($dataTable)
+        Write-Host "Data imported successfully to SQL Server."
+    } catch {
+        Write-Error "Error during bulk copy: $_"
+    } finally {
+        $bulkCopy.Close()
+    }
+}
+
+# Main execution block
+try {
+    $jsonResponse = Invoke-MongoDBAPI
+    $dataTable = ConvertTo-DataTable -json $jsonResponse
+    Write-Output "Rows to be inserted: $($dataTable.Rows.Count)"
+
+    if ($dataTable.Rows.Count -gt 0) {
+        Import-DataTableToSql -dataTable $dataTable
+    } else {
+        Write-Output "No data available to import."
+    }
+} catch {
+    Write-Error "An error occurred: $_"
+}

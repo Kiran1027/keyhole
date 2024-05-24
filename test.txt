@@ -14,3 +14,36 @@ $endDateISO = $endDate.ToString("yyyy-MM-ddTHH:mm:ss")
 # Output the start and end dates in ISO format
 Write-Output "Start Date (ISO): $startDateISO"
 Write-Output "End Date (ISO): $endDateISO"
+
+
+==========================================================================
+
+# Define your groupId and hostname
+$groupId = "656639f67f8edf7a8e1062ce"
+$hostname = "atlas-z9idw7-shard-00-02.xwl4k.mongodb.net:27017"
+
+# Get the current date
+$currentDate = Get-Date
+
+# Calculate the start date (midnight of the previous day)
+$startDate = $currentDate.AddDays(-1).Date
+
+# Calculate the end date (midnight of the current day)
+$endDate = $currentDate.Date.AddDays(1)
+
+# Format the dates in ISO date format
+$startDateISO = $startDate.ToString("yyyy-MM-ddTHH:mm:ssZ")
+$endDateISO = $endDate.ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+# Construct the URL with variables directly
+$apiURL = "https://cloud.mongodb.com/api/atlas/v2/groups/$groupId/processes/$hostname/measurements?granularity=PT1H&start=$startDateISO&end=$endDateISO"
+
+# Output the full URL
+Write-Output "Full URL: $apiURL"
+
+# Make the API call
+$response = Invoke-RestMethod -Uri $apiURL -Method Get
+
+# Output the response
+Write-Output $response
+

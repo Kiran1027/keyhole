@@ -1,0 +1,16 @@
+# Get the current date
+$currentDate = Get-Date
+
+# Calculate the start date (midnight of the previous day)
+$startDate = $currentDate.AddDays(-1).Date
+
+# Calculate the end date (midnight of the current day)
+$endDate = $currentDate.Date.AddDays(1)
+
+# Format the dates in ISO date format
+$startDateISO = $startDate.ToString("yyyy-MM-ddTHH:mm:ss")
+$endDateISO = $endDate.ToString("yyyy-MM-ddTHH:mm:ss")
+
+# Output the start and end dates in ISO format
+Write-Output "Start Date (ISO): $startDateISO"
+Write-Output "End Date (ISO): $endDateISO"

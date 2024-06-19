@@ -5,3 +5,122 @@ start=2024-01-15T00:00:00Z&end=2024-01-16T00:00:00Z
 
 
 atlas metrics processes  testcluster-shard-00-02.hhn0w.mongodb.net:27017   --start 2024-01-19T00:00:00Z  --end 2024-01-19T02:00:00Z --granularity PT1M
+
+
+# Import the SqlServer module
+Import-Module SqlServer
+
+# Define SQL Server connection details
+$sqlServer = "DBADWHTest"
+$database = "DBAWarehouse"
+
+# Create the SQL Server connection string
+$SQLConn = New-Object System.Data.SQLClient.SQLConnection
+$SQLConn.ConnectionString = "server=$sqlServer;database=$database;trusted_connection=true;" 
+$SQLConn.Open()
+
+# Fetch API Keys from DimOrganization table
+$SQLCmd = New-Object System.Data.SQLClient.SQLCommand
+$SQLCmd.Connection = $SQLConn
+$SQLCmd.CommandText = "SELECT 
+        PublicKey,
+        PrivateKey
+    FROM MongoDB.DimOrganization 
+    WHERE OrgName = 'CAPE'"
+$ParamRset = $SQLCmd.ExecuteReader()
+$ParamRset.Read() | Out-Null
+$PubKey = $ParamRset[0]
+$PriKey = $ParamRset[1]
+$ParamRset.Dispose()
+$ParamRset.Close()
+$SQLCmd.Dispose()
+
+$username = "$PubKey"
+$password = ConvertTo-SecureString "$PriKey" -AsPlainText -Force
+$credential = New-Object System.Management.Automation.PSCredential($username, $password)
+
+# Get the current date
+$currentDate = Get-Date
+
+# Calculate the start date (midnight of the previous day)
+$startDate = $currentDate.AddDays(-1).Date
+
+# Calculate the end date (midnight of the current day)
+$endDate = $currentDate.Date.AddDays(1)
+
+# Format the dates in ISO date format
+$startDateISO = $startDate.ToString("yyyy-MM-ddTHH:mm:ssZ")
+$endDateISO = $endDate.ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+# Query to get the list of servers
+$SQLCmd = New-Object System.Data.SQLClient.SQLCommand
+$SQLCmd.Connection = $SQLConn
+$SQLCmd.CommandText = "SELECT 
+        HostName_Port,
+        GroupId
+    FROM MongoDB.MongoServers_STG 
+    WHERE NodeType = 'REPLICA_PRIMARY'"
+
+$ParamRset = $SQLCmd.ExecuteReader()
+
+# Create a SqlConnection object for the bulk insert
+$sqlConnectionString = "server=$sqlServer;database=$database;trusted_connection=true;"
+$sqlConnection = New-Object System.Data.SqlClient.SqlConnection($sqlConnectionString)
+$sqlConnection.Open()
+
+# Iterate over each row in the result set
+while ($ParamRset.Read()) {
+    $SourceServer = $ParamRset["HostName_Port"]
+    $GroupId = $ParamRset["GroupId"]
+
+    $apiURL = "https://cloud.mongodb.com/api/atlas/v2/groups/$GroupId/processes/$SourceServer/measurements?granularity=PT1H&start=$startDateISO&end=$endDateISO"
+    $headers = @{
+        "Accept" = "application/vnd.atlas.2023-02-01+json"
+    }
+
+    $data = Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
+
+    # Create a DataTable to hold the data
+    $dataTable = New-Object System.Data.DataTable
+    $dataTable.Columns.Add("groupId", [System.String])
+    $dataTable.Columns.Add("hostId", [System.String])
+    $dataTable.Columns.Add("processId", [System.String])
+    $dataTable.Columns.Add("name", [System.String])
+    $dataTable.Columns.Add("timestamp", [System.DateTime])
+    $dataTable.Columns.Add("value", [System.String])
+    $dataTable.Columns.Add("units", [System.String])
+
+    # Add rows to the DataTable
+    $data.measurements | ForEach-Object {
+        $name = $_.name
+        $_.dataPoints | ForEach-Object {
+            $row = $dataTable.NewRow()
+            $row.groupId = $data.groupId
+            $row.hostId = $data.hostId
+            $row.processId = $data.processId
+            $row.name = $name
+            $row.timestamp = $_.timestamp
+            $row.value = $_.value
+            $row.units = $_.units
+            $dataTable.Rows.Add($row) | Out-Null
+        }
+    }
+
+    # Create a SqlBulkCopy object
+    $bulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy($sqlConnection)
+    # Set the destination table name
+    $bulkCopy.DestinationTableName = "MongoDB.PerformanceMetrics_STG"
+    # Set the batch size (optional)
+    $bulkCopy.BatchSize = 1000
+    # Write the data to the SQL Server table
+    $bulkCopy.WriteToServer($dataTable)
+}
+
+# Close the SQL connections
+$ParamRset.Close()
+$SQLConn.Close()
+$sqlConnection.Close()
+$SQLConn.Dispose()
+$sqlConnection.Dispose()
+
+Write-Output "Data inserted into SQL Server table successfully."

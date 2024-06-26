@@ -6,6 +6,25 @@ $SQLConn = New-Object System.Data.SQLClient.SQLConnection
 $SQLConn.ConnectionString = "server=$sqlServer;database=$database;trusted_connection=true;" 
 $SQLConn.Open()
 
+# Fetch API Keys from DimOrganization table
+$SQLCmd = New-Object System.Data.SQLClient.SQLCommand
+$SQLCmd.Connection = $SQLConn
+$SQLCmd.CommandText = "SELECT 
+        PublicKey,
+        PrivateKey
+    FROM MongoDB.DimOrganization 
+    WHERE OrgName = 'CAPE'"
+$KeyRset = $SQLCmd.ExecuteReader()
+$KeyRset.Read() | Out-Null
+$PubKey = $KeyRset[0]
+$PriKey = $KeyRset[1]
+$KeyRset.Dispose()
+$KeyRset.Close()
+
+$username = "$PubKey"
+$password = ConvertTo-SecureString "$PriKey" -AsPlainText -Force
+$credential = New-Object System.Management.Automation.PSCredential($username, $password)
+
 # Create a DataTable to hold the data for all rows
 $allDataTable = New-Object System.Data.DataTable
 $allDataTable.Columns.Add("groupId", [System.String])
@@ -30,25 +49,6 @@ $ParamRset = $SQLCmd.ExecuteReader()
 while ($ParamRset.Read()) {
     $SourceServer = $ParamRset[0]
     $GroupId = $ParamRset[1]
-
-    # Fetch API Keys from DimOrganization table
-    $SQLCmd = New-Object System.Data.SQLClient.SQLCommand
-    $SQLCmd.Connection = $SQLConn
-    $SQLCmd.CommandText = "SELECT 
-            PublicKey,
-            PrivateKey
-        FROM MongoDB.DimOrganization 
-        WHERE OrgName = 'CAPE'"
-    $KeyRset = $SQLCmd.ExecuteReader()
-    $KeyRset.Read() | Out-Null
-    $PubKey = $KeyRset[0]
-    $PriKey = $KeyRset[1]
-    $KeyRset.Dispose()
-    $KeyRset.Close()
-
-    $username = "$PubKey"
-    $password = ConvertTo-SecureString "$PriKey" -AsPlainText -Force
-    $credential = New-Object System.Management.Automation.PSCredential($username, $password)
 
     # Get the current date and format the dates in ISO date format
     $currentDate = Get-Date

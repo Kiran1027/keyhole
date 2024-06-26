@@ -1,0 +1,103 @@
+$sqlServer = "DBADWHTest"
+$database = "DBAWarehouse"
+
+# Create the SQL Server connection string
+$SQLConn = New-Object System.Data.SQLClient.SQLConnection
+$SQLConn.ConnectionString = "server=$sqlServer;database=$database;trusted_connection=true;" 
+$SQLConn.Open()
+
+# Create a DataTable to hold the data for all rows
+$allDataTable = New-Object System.Data.DataTable
+$allDataTable.Columns.Add("groupId", [System.String])
+$allDataTable.Columns.Add("hostId", [System.String])
+$allDataTable.Columns.Add("processId", [System.String])
+$allDataTable.Columns.Add("name", [System.String])
+$allDataTable.Columns.Add("timestamp", [System.DateTime])
+$allDataTable.Columns.Add("value", [System.String])
+$allDataTable.Columns.Add("units", [System.String])
+
+# Query the MongoDB.MongoServers_STG table for HostName_Port and GroupId
+$SQLCmd = New-Object System.Data.SQLClient.SQLCommand
+$SQLCmd.Connection = $SQLConn
+$SQLCmd.CommandText = "SELECT 
+        HostName_Port,
+        GroupId
+    FROM MongoDB.MongoServers_STG 
+    WHERE NodeType = 'REPLICA_PRIMARY'"
+$ParamRset = $SQLCmd.ExecuteReader()
+
+# Iterate over each row in the result set
+while ($ParamRset.Read()) {
+    $SourceServer = $ParamRset[0]
+    $GroupId = $ParamRset[1]
+
+    # Fetch API Keys from DimOrganization table
+    $SQLCmd = New-Object System.Data.SQLClient.SQLCommand
+    $SQLCmd.Connection = $SQLConn
+    $SQLCmd.CommandText = "SELECT 
+            PublicKey,
+            PrivateKey
+        FROM MongoDB.DimOrganization 
+        WHERE OrgName = 'CAPE'"
+    $KeyRset = $SQLCmd.ExecuteReader()
+    $KeyRset.Read() | Out-Null
+    $PubKey = $KeyRset[0]
+    $PriKey = $KeyRset[1]
+    $KeyRset.Dispose()
+    $KeyRset.Close()
+
+    $username = "$PubKey"
+    $password = ConvertTo-SecureString "$PriKey" -AsPlainText -Force
+    $credential = New-Object System.Management.Automation.PSCredential($username, $password)
+
+    # Get the current date and format the dates in ISO date format
+    $currentDate = Get-Date
+    $startDate = $currentDate.AddDays(-1).Date
+    $endDate = $currentDate.Date.AddDays(1)
+    $startDateISO = $startDate.ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $endDateISO = $endDate.ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+    # Perform the API call
+    $apiURL = "https://cloud.mongodb.com/api/atlas/v2/groups/$GroupId/processes/$SourceServer/measurements?granularity=PT1H&start=$startDateISO&end=$endDateISO"
+    $headers = @{
+        "Accept" = "application/vnd.atlas.2023-02-01+json"
+    }
+    $data = Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
+
+    # Add the API response data to the DataTable
+    $data.measurements | ForEach-Object {
+        $name = $_.name
+        $_.dataPoints | ForEach-Object {
+            $row = $allDataTable.NewRow()
+            $row.groupId = $data.groupId
+            $row.hostId = $data.hostId
+            $row.processId = $data.processId
+            $row.name = $name
+            $row.timestamp = $_.timestamp
+            $row.value = $_.value
+            $row.units = $_.units
+            $allDataTable.Rows.Add($row) | Out-Null
+        }
+    }
+}
+
+$ParamRset.Dispose()
+$ParamRset.Close()
+$SQLCmd.Dispose()
+
+# Insert the collected data into SQL Server
+$sqlConnectionString = "server=$sqlServer;database=$database;trusted_connection=true;"
+$sqlConnection = New-Object System.Data.SqlClient.SqlConnection($sqlConnectionString)
+$sqlConnection.Open()
+
+$bulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy($sqlConnection)
+$bulkCopy.DestinationTableName = "MongoDB.PerformanceMetrics_STG"
+$bulkCopy.BatchSize = 1000
+$bulkCopy.WriteToServer($allDataTable)
+
+$sqlConnection.Close()
+$SQLConn.Close()
+$SQLConn.Dispose()
+$sqlConnection.Dispose()
+
+Write-Output "Data inserted into SQL Server table successfully."

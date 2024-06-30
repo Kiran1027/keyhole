@@ -10,17 +10,19 @@ function Get-ApiKeys($SQLConn) {
     $SQLCmd.Connection = $SQLConn
     $SQLCmd.CommandText = "SELECT PublicKey, PrivateKey FROM MongoDB.DimOrganization WHERE OrgName = 'CAPE'"
     $KeyRset = $SQLCmd.ExecuteReader()
+    $PubKey = ""
+    $PriKey = ""
     try {
         if ($KeyRset.Read()) {
             $PubKey = $KeyRset["PublicKey"]
             $PriKey = $KeyRset["PrivateKey"]
-            return @($PubKey, $PriKey)
         } else {
             throw "No API keys found."
         }
     } finally {
-        $KeyRset.Dispose()
+        $KeyRset.Close()
     }
+    return @($PubKey, $PriKey)
 }
 
 function Get-ServerInfo($SQLConn) {
@@ -109,7 +111,7 @@ try {
             Insert-DataIntoSQL -dataTable $dataTable -sqlServer $sqlServer -database $database
         }
     } finally {
-        $ParamRset.Dispose()
+        $ParamRset.Close()
     }
 } catch {
     Write-Error "An error occurred: $_"

@@ -15,10 +15,10 @@ function Get-ApiKeys {
     param (
         [System.Data.SqlClient.SqlConnection]$SQLConn
     )
+    $keys = @()
     $query = "SELECT PublicKey, PrivateKey FROM MongoDB.DimOrganization WHERE OrgName = 'CAPE'"
     $cmd = $SQLConn.CreateCommand()
     $cmd.CommandText = $query
-    $keys = @()
     $reader = $cmd.ExecuteReader()
     try {
         while ($reader.Read()) {
@@ -128,28 +128,43 @@ function Insert-DataIntoSQL {
 try {
     $sqlServer = "DBADWHTest"
     $database = "DBAWarehouse"
-
+    
+    Write-Output "Connecting to SQL Server..."
     $SQLConn = Get-SqlConnection -sqlServer $sqlServer -database $database
-    try {
-        $keys = Get-ApiKeys -SQLConn $SQLConn
-        $username = $keys[0]
-        $password = ConvertTo-SecureString $keys[1] -AsPlainText -Force
-        $credential = New-Object System.Management.Automation.PSCredential ($username, $password)
 
-        $servers = Get-ServerInfo -SQLConn $SQLConn
-        foreach ($server in $servers) {
-            $SourceServer = $server[0]
-            $GroupId = $server[1]
+    Write-Output "Fetching API keys..."
+    $keys = Get-ApiKeys -SQLConn $SQLConn
+    Write-Output "API keys fetched: $keys"
 
-            $data = Invoke-MongoDBAtlasAPI -GroupId $GroupId -SourceServer $SourceServer -credential $credential
-            $dataTable = Convert-JsonToDataTable -data $data
-            Insert-DataIntoSQL -dataTable $dataTable -sqlServer $sqlServer -database $database
-        }
-    } finally {
-        $SQLConn.Close()
+    $username = $keys[0]
+    $password = ConvertTo-SecureString $keys[1] -AsPlainText -Force
+    $credential = New-Object System.Management.Automation.PSCredential ($username, $password)
+
+    Write-Output "Fetching server info..."
+    $servers = Get-ServerInfo -SQLConn $SQLConn
+    Write-Output "Servers fetched: $servers"
+
+    foreach ($server in $servers) {
+        Write-Output "Processing server: $server"
+
+        $SourceServer = $server[0]
+        $GroupId = $server[1]
+
+        Write-Output "Invoking MongoDB Atlas API..."
+        $data = Invoke-MongoDBAtlasAPI -GroupId $GroupId -SourceServer $SourceServer -credential $credential
+        Write-Output "Data fetched from API."
+
+        Write-Output "Converting JSON to DataTable..."
+        $dataTable = Convert-JsonToDataTable -data $data
+        Write-Output "DataTable created with $($dataTable.Rows.Count) rows."
+
+        Write-Output "Inserting DataTable into SQL..."
+        Insert-DataIntoSQL -dataTable $dataTable -sqlServer $sqlServer -database $database
+        Write-Output "DataTable inserted into SQL."
     }
 } catch {
     Write-Error "An error occurred: $_"
 } finally {
+    if ($SQLConn -and $SQLConn.State -eq 'Open') { $SQLConn.Close() }
     Write-Output "Process completed."
 }

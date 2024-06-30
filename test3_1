@@ -80,13 +80,13 @@ function Convert-JsonToDataTable {
         $name = $measurement.name
         foreach ($dataPoint in $measurement.dataPoints) {
             $row = $dataTable.NewRow()
-            $row.groupId = $data.groupId
-            $row.hostId = $data.hostId
-            $row.processId = $data.processId
-            $row.name = $name
-            $row.timestamp = $dataPoint.timestamp
-            $row.value = $dataPoint.value
-            $row.units = $dataPoint.units
+            $row["groupId"] = $data.groupId
+            $row["hostId"] = $data.hostId
+            $row["processId"] = $data.processId
+            $row["name"] = $name
+            $row["timestamp"] = $dataPoint.timestamp
+            $row["value"] = $dataPoint.value
+            $row["units"] = $dataPoint.units
             $dataTable.Rows.Add($row)
         }
     }

@@ -12,15 +12,13 @@ function Get-ApiKeys($SQLConn) {
     $KeyRset = $SQLCmd.ExecuteReader()
     $keys = @()
     try {
-        while ($KeyRset.Read()) {
+        if ($KeyRset.Read()) {
             $keys = @($KeyRset["PublicKey"], $KeyRset["PrivateKey"])
+        } else {
+            throw "No API keys found."
         }
     } finally {
         $KeyRset.Close()
-        $KeyRset.Dispose()
-    }
-    if ($keys.Count -eq 0) {
-        throw "No API keys found."
     }
     return $keys
 }
@@ -84,7 +82,6 @@ function Insert-DataIntoSQL($dataTable, $sqlServer, $database) {
         $bulkCopy.WriteToServer($dataTable)
     } finally {
         $sqlConnection.Close()
-        $sqlConnection.Dispose()
     }
 }
 
@@ -112,11 +109,9 @@ try {
             }
         } finally {
             $ParamRset.Close()
-            $ParamRset.Dispose()
         }
     } finally {
         $SQLConn.Close()
-        $SQLConn.Dispose()
     }
 } catch {
     Write-Error "An error occurred: $_"

@@ -1,3 +1,4 @@
+# Function to get SQL connection
 function Get-SqlConnection {
     param (
         [string]$sqlServer,
@@ -9,14 +10,15 @@ function Get-SqlConnection {
     return $SQLConn
 }
 
+# Function to get API keys from the database
 function Get-ApiKeys {
     param (
         [System.Data.SqlClient.SqlConnection]$SQLConn
     )
-    $keys = @()
     $query = "SELECT PublicKey, PrivateKey FROM MongoDB.DimOrganization WHERE OrgName = 'CAPE'"
     $cmd = $SQLConn.CreateCommand()
     $cmd.CommandText = $query
+    $keys = @()
     $reader = $cmd.ExecuteReader()
     try {
         while ($reader.Read()) {
@@ -31,6 +33,7 @@ function Get-ApiKeys {
     return $keys
 }
 
+# Function to get server information from the database
 function Get-ServerInfo {
     param (
         [System.Data.SqlClient.SqlConnection]$SQLConn
@@ -50,6 +53,7 @@ function Get-ServerInfo {
     return $servers
 }
 
+# Function to invoke MongoDB Atlas API and get performance data
 function Invoke-MongoDBAtlasAPI {
     param (
         [string]$GroupId,
@@ -69,6 +73,7 @@ function Invoke-MongoDBAtlasAPI {
     return Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
 }
 
+# Function to convert JSON data to a DataTable
 function Convert-JsonToDataTable {
     param (
         [psobject]$data
@@ -99,6 +104,7 @@ function Convert-JsonToDataTable {
     return $dataTable
 }
 
+# Function to insert data into SQL server
 function Insert-DataIntoSQL {
     param (
         [System.Data.DataTable]$dataTable,

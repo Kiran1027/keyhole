@@ -1,3 +1,4 @@
+# Function to get SQL connection
 function Get-SqlConnection {
     param (
         [string]$sqlServer,
@@ -9,26 +10,26 @@ function Get-SqlConnection {
     return $SQLConn
 }
 
+# Function to get API keys from the database
 function Get-ApiKeys {
     param (
         [System.Data.SqlClient.SqlConnection]$SQLConn
     )
     $SQLCmd = $SQLConn.CreateCommand()
     $SQLCmd.CommandText = "SELECT PublicKey, PrivateKey FROM MongoDB.DimOrganization WHERE OrgName = 'CAPE'"
-    $KeyRset = $SQLCmd.ExecuteReader()
     $keys = @()
-    try {
-        if ($KeyRset.Read()) {
-            $keys = @($KeyRset["PublicKey"], $KeyRset["PrivateKey"])
-        } else {
-            throw "No API keys found."
-        }
-    } finally {
-        $KeyRset.Close()
+    $KeyRset = $SQLCmd.ExecuteReader()
+    if ($KeyRset.Read()) {
+        $keys = @($KeyRset["PublicKey"], $KeyRset["PrivateKey"])
+    }
+    $KeyRset.Close()
+    if ($keys.Count -eq 0) {
+        throw "No API keys found."
     }
     return $keys
 }
 
+# Function to get server information from the database
 function Get-ServerInfo {
     param (
         [System.Data.SqlClient.SqlConnection]$SQLConn
@@ -38,6 +39,7 @@ function Get-ServerInfo {
     return $SQLCmd.ExecuteReader()
 }
 
+# Function to invoke MongoDB Atlas API and get performance data
 function Invoke-MongoDBAtlasAPI {
     param (
         [string]$GroupId,
@@ -57,6 +59,7 @@ function Invoke-MongoDBAtlasAPI {
     return Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
 }
 
+# Function to convert JSON data to a DataTable
 function Convert-JsonToDataTable {
     param (
         [psobject]$data
@@ -87,6 +90,7 @@ function Convert-JsonToDataTable {
     return $dataTable
 }
 
+# Function to insert data into SQL server
 function Insert-DataIntoSQL {
     param (
         [System.Data.DataTable]$dataTable,
@@ -95,8 +99,8 @@ function Insert-DataIntoSQL {
     )
     $sqlConnectionString = "Server=$sqlServer;Database=$database;Trusted_Connection=True;"
     $sqlConnection = New-Object System.Data.SqlClient.SqlConnection $sqlConnectionString
+    $sqlConnection.Open()
     try {
-        $sqlConnection.Open()
         $bulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy $sqlConnection
         $bulkCopy.DestinationTableName = "MongoDB.PerformanceMetrics_STG"
         $bulkCopy.BatchSize = 1000
@@ -110,30 +114,24 @@ function Insert-DataIntoSQL {
 try {
     $sqlServer = "DBADWHTest"
     $database = "DBAWarehouse"
-
+    
     $SQLConn = Get-SqlConnection -sqlServer $sqlServer -database $database
-    try {
-        $keys = Get-ApiKeys -SQLConn $SQLConn
-        $username = $keys[0]
-        $password = ConvertTo-SecureString $keys[1] -AsPlainText -Force
-        $credential = New-Object System.Management.Automation.PSCredential ($username, $password)
+    $keys = Get-ApiKeys -SQLConn $SQLConn
+    $username = $keys[0]
+    $password = ConvertTo-SecureString $keys[1] -AsPlainText -Force
+    $credential = New-Object System.Management.Automation.PSCredential ($username, $password)
 
-        $ParamRset = Get-ServerInfo -SQLConn $SQLConn
-        try {
-            while ($ParamRset.Read()) {
-                $SourceServer = $ParamRset["HostName_Port"]
-                $GroupId = $ParamRset["GroupId"]
+    $ParamRset = Get-ServerInfo -SQLConn $SQLConn
+    while ($ParamRset.Read()) {
+        $SourceServer = $ParamRset["HostName_Port"]
+        $GroupId = $ParamRset["GroupId"]
 
-                $data = Invoke-MongoDBAtlasAPI -GroupId $GroupId -SourceServer $SourceServer -credential $credential
-                $dataTable = Convert-JsonToDataTable -data $data
-                Insert-DataIntoSQL -dataTable $dataTable -sqlServer $sqlServer -database $database
-            }
-        } finally {
-            $ParamRset.Close()
-        }
-    } finally {
-        $SQLConn.Close()
+        $data = Invoke-MongoDBAtlasAPI -GroupId $GroupId -SourceServer $SourceServer -credential $credential
+        $dataTable = Convert-JsonToDataTable -data $data
+        Insert-DataIntoSQL -dataTable $dataTable -sqlServer $sqlServer -database $database
     }
+    $ParamRset.Close()
+    $SQLConn.Close()
 } catch {
     Write-Error "An error occurred: $_"
 } finally {

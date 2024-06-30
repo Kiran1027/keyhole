@@ -6,24 +6,23 @@ function Get-SqlConnection($sqlServer, $database) {
 }
 
 function Get-ApiKeys($SQLConn) {
-    $PubKey = ""
-    $PriKey = ""
     $SQLCmd = New-Object System.Data.SQLClient.SQLCommand
     $SQLCmd.Connection = $SQLConn
     $SQLCmd.CommandText = "SELECT PublicKey, PrivateKey FROM MongoDB.DimOrganization WHERE OrgName = 'CAPE'"
     $KeyRset = $SQLCmd.ExecuteReader()
+    $keys = @()
     try {
-        if ($KeyRset.Read()) {
-            $PubKey = $KeyRset["PublicKey"]
-            $PriKey = $KeyRset["PrivateKey"]
-        } else {
-            throw "No API keys found."
+        while ($KeyRset.Read()) {
+            $keys = @($KeyRset["PublicKey"], $KeyRset["PrivateKey"])
         }
     } finally {
         $KeyRset.Close()
         $KeyRset.Dispose()
     }
-    return @($PubKey, $PriKey)
+    if ($keys.Count -eq 0) {
+        throw "No API keys found."
+    }
+    return $keys
 }
 
 function Get-ServerInfo($SQLConn) {
@@ -95,29 +94,32 @@ try {
     $database = "DBAWarehouse"
 
     $SQLConn = Get-SqlConnection -sqlServer $sqlServer -database $database
-    $keys = Get-ApiKeys -SQLConn $SQLConn
-    $username = $keys[0]
-    $password = ConvertTo-SecureString $keys[1] -AsPlainText -Force
-    $credential = New-Object System.Management.Automation.PSCredential($username, $password)
-
-    $ParamRset = Get-ServerInfo -SQLConn $SQLConn
     try {
-        while ($ParamRset.Read()) {
-            $SourceServer = $ParamRset["HostName_Port"]
-            $GroupId = $ParamRset["GroupId"]
+        $keys = Get-ApiKeys -SQLConn $SQLConn
+        $username = $keys[0]
+        $password = ConvertTo-SecureString $keys[1] -AsPlainText -Force
+        $credential = New-Object System.Management.Automation.PSCredential($username, $password)
 
-            $data = Invoke-MongoDBAtlasAPI -GroupId $GroupId -SourceServer $SourceServer -credential $credential
-            $dataTable = Convert-JsonToDataTable -data $data
-            Insert-DataIntoSQL -dataTable $dataTable -sqlServer $sqlServer -database $database
+        $ParamRset = Get-ServerInfo -SQLConn $SQLConn
+        try {
+            while ($ParamRset.Read()) {
+                $SourceServer = $ParamRset["HostName_Port"]
+                $GroupId = $ParamRset["GroupId"]
+
+                $data = Invoke-MongoDBAtlasAPI -GroupId $GroupId -SourceServer $SourceServer -credential $credential
+                $dataTable = Convert-JsonToDataTable -data $data
+                Insert-DataIntoSQL -dataTable $dataTable -sqlServer $sqlServer -database $database
+            }
+        } finally {
+            $ParamRset.Close()
+            $ParamRset.Dispose()
         }
     } finally {
-        $ParamRset.Close()
-        $ParamRset.Dispose()
+        $SQLConn.Close()
+        $SQLConn.Dispose()
     }
 } catch {
     Write-Error "An error occurred: $_"
 } finally {
-    $SQLConn.Close()
-    $SQLConn.Dispose()
     Write-Output "Process completed."
 }

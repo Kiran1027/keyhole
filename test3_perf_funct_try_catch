@@ -10,12 +10,15 @@ function Get-ApiKeys($SQLConn) {
     $SQLCmd.Connection = $SQLConn
     $SQLCmd.CommandText = "SELECT PublicKey, PrivateKey FROM MongoDB.DimOrganization WHERE OrgName = 'CAPE'"
     $KeyRset = $SQLCmd.ExecuteReader()
-    $KeyRset.Read() | Out-Null
-    $PubKey = $KeyRset[0]
-    $PriKey = $KeyRset[1]
-    $KeyRset.Dispose()
-    $KeyRset.Close()
-    return @($PubKey, $PriKey)
+    if ($KeyRset.Read()) {
+        $PubKey = $KeyRset["PublicKey"]
+        $PriKey = $KeyRset["PrivateKey"]
+        $KeyRset.Dispose()
+        $KeyRset.Close()
+        return @($PubKey, $PriKey)
+    } else {
+        throw "No API keys found."
+    }
 }
 
 function Get-ServerInfo($SQLConn) {
@@ -95,8 +98,8 @@ try {
     $ParamRset = Get-ServerInfo -SQLConn $SQLConn
 
     while ($ParamRset.Read()) {
-        $SourceServer = $ParamRset[0]
-        $GroupId = $ParamRset[1]
+        $SourceServer = $ParamRset["HostName_Port"]
+        $GroupId = $ParamRset["GroupId"]
 
         $data = Invoke-MongoDBAtlasAPI -GroupId $GroupId -SourceServer $SourceServer -credential $credential
         $dataTable = Convert-JsonToDataTable -data $data

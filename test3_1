@@ -19,10 +19,13 @@ function Get-ApiKeys {
     $SQLCmd.CommandText = "SELECT PublicKey, PrivateKey FROM MongoDB.DimOrganization WHERE OrgName = 'CAPE'"
     $keys = @()
     $KeyRset = $SQLCmd.ExecuteReader()
-    if ($KeyRset.Read()) {
-        $keys = @($KeyRset["PublicKey"], $KeyRset["PrivateKey"])
+    try {
+        while ($KeyRset.Read()) {
+            $keys = @($KeyRset["PublicKey"], $KeyRset["PrivateKey"])
+        }
+    } finally {
+        $KeyRset.Close()
     }
-    $KeyRset.Close()
     if ($keys.Count -eq 0) {
         throw "No API keys found."
     }
@@ -99,8 +102,8 @@ function Insert-DataIntoSQL {
     )
     $sqlConnectionString = "Server=$sqlServer;Database=$database;Trusted_Connection=True;"
     $sqlConnection = New-Object System.Data.SqlClient.SqlConnection $sqlConnectionString
-    $sqlConnection.Open()
     try {
+        $sqlConnection.Open()
         $bulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy $sqlConnection
         $bulkCopy.DestinationTableName = "MongoDB.PerformanceMetrics_STG"
         $bulkCopy.BatchSize = 1000
@@ -114,7 +117,7 @@ function Insert-DataIntoSQL {
 try {
     $sqlServer = "DBADWHTest"
     $database = "DBAWarehouse"
-    
+
     $SQLConn = Get-SqlConnection -sqlServer $sqlServer -database $database
     $keys = Get-ApiKeys -SQLConn $SQLConn
     $username = $keys[0]
@@ -122,18 +125,21 @@ try {
     $credential = New-Object System.Management.Automation.PSCredential ($username, $password)
 
     $ParamRset = Get-ServerInfo -SQLConn $SQLConn
-    while ($ParamRset.Read()) {
-        $SourceServer = $ParamRset["HostName_Port"]
-        $GroupId = $ParamRset["GroupId"]
+    try {
+        while ($ParamRset.Read()) {
+            $SourceServer = $ParamRset["HostName_Port"]
+            $GroupId = $ParamRset["GroupId"]
 
-        $data = Invoke-MongoDBAtlasAPI -GroupId $GroupId -SourceServer $SourceServer -credential $credential
-        $dataTable = Convert-JsonToDataTable -data $data
-        Insert-DataIntoSQL -dataTable $dataTable -sqlServer $sqlServer -database $database
+            $data = Invoke-MongoDBAtlasAPI -GroupId $GroupId -SourceServer $SourceServer -credential $credential
+            $dataTable = Convert-JsonToDataTable -data $data
+            Insert-DataIntoSQL -dataTable $dataTable -sqlServer $sqlServer -database $database
+        }
+    } finally {
+        $ParamRset.Close()
     }
-    $ParamRset.Close()
-    $SQLConn.Close()
 } catch {
     Write-Error "An error occurred: $_"
 } finally {
+    if ($SQLConn) { $SQLConn.Close() }
     Write-Output "Process completed."
 }

@@ -95,9 +95,9 @@ function Convert-JsonToDataTable {
             $row["hostId"] = $data.hostId
             $row["processId"] = $data.processId
             $row["name"] = $name
-            $row["timestamp"] = $dataPoint.timestamp
-            $row["value"] = $dataPoint.value
-            $row["units"] = $dataPoint.units
+            $row["timestamp"] = [DateTime]$dataPoint.timestamp
+            $row["value"] = [string]$dataPoint.value
+            $row["units"] = [string]$dataPoint.units
             $dataTable.Rows.Add($row)
         }
     }

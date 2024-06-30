@@ -6,12 +6,12 @@ function Get-SqlConnection($sqlServer, $database) {
 }
 
 function Get-ApiKeys($SQLConn) {
+    $PubKey = ""
+    $PriKey = ""
     $SQLCmd = New-Object System.Data.SQLClient.SQLCommand
     $SQLCmd.Connection = $SQLConn
     $SQLCmd.CommandText = "SELECT PublicKey, PrivateKey FROM MongoDB.DimOrganization WHERE OrgName = 'CAPE'"
     $KeyRset = $SQLCmd.ExecuteReader()
-    $PubKey = ""
-    $PriKey = ""
     try {
         if ($KeyRset.Read()) {
             $PubKey = $KeyRset["PublicKey"]
@@ -21,6 +21,7 @@ function Get-ApiKeys($SQLConn) {
         }
     } finally {
         $KeyRset.Close()
+        $KeyRset.Dispose()
     }
     return @($PubKey, $PriKey)
 }
@@ -100,7 +101,6 @@ try {
     $credential = New-Object System.Management.Automation.PSCredential($username, $password)
 
     $ParamRset = Get-ServerInfo -SQLConn $SQLConn
-
     try {
         while ($ParamRset.Read()) {
             $SourceServer = $ParamRset["HostName_Port"]
@@ -112,6 +112,7 @@ try {
         }
     } finally {
         $ParamRset.Close()
+        $ParamRset.Dispose()
     }
 } catch {
     Write-Error "An error occurred: $_"

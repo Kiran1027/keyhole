@@ -123,8 +123,9 @@ function Insert-DataIntoSQL {
         $bulkCopy.DestinationTableName = "MongoDB.PerformanceMetrics_STG"
         $bulkCopy.BatchSize = 1000
 
-        # Check the type and structure of the DataTable before inserting
-        Write-Output "DataTable type: $($dataTable.GetType().FullName)"
+        # Debugging: Print the DataTable schema and rows count
+        Write-Output "DataTable schema:"
+        $dataTable.Columns | ForEach-Object { Write-Output "Column: $($_.ColumnName) Type: $($_.DataType)" }
         Write-Output "DataTable has $($dataTable.Rows.Count) rows."
 
         $bulkCopy.WriteToServer($dataTable)

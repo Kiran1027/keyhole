@@ -73,11 +73,14 @@ function Invoke-MongoDBAtlasAPI {
     return Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
 }
 
-# Function to convert JSON data to a DataTable
-function Convert-JsonToDataTable {
+# Combined function to convert JSON data to DataTable and insert it into SQL Server
+function ConvertAndInsertData {
     param (
-        [psobject]$data
+        [psobject]$data,
+        [string]$sqlServer,
+        [string]$database
     )
+
     Write-Output "Data received for conversion:"
     Write-Output ($data | ConvertTo-Json -Depth 10)
 
@@ -113,16 +116,6 @@ function Convert-JsonToDataTable {
     $dataTable.Columns | ForEach-Object { Write-Output "Column: $($_.ColumnName) Type: $($_.DataType)" }
     Write-Output "DataTable has $($dataTable.Rows.Count) rows."
 
-    return $dataTable
-}
-
-# Function to insert data into SQL server
-function Insert-DataIntoSQL {
-    param (
-        [System.Data.DataTable]$dataTable,
-        [string]$sqlServer,
-        [string]$database
-    )
     $sqlConnectionString = "Server=$sqlServer;Database=$database;Trusted_Connection=True;"
     $sqlConnection = New-Object System.Data.SqlClient.SqlConnection $sqlConnectionString
     try {
@@ -140,6 +133,8 @@ function Insert-DataIntoSQL {
     } finally {
         $sqlConnection.Close()
     }
+
+    Write-Output "DataTable inserted into SQL."
 }
 
 # Main script
@@ -172,13 +167,8 @@ try {
         $data = Invoke-MongoDBAtlasAPI -GroupId $GroupId -SourceServer $SourceServer -credential $credential
         Write-Output "Data fetched from API."
 
-        Write-Output "Converting JSON to DataTable..."
-        $dataTable = Convert-JsonToDataTable -data $data
-        Write-Output "DataTable created with $($dataTable.Rows.Count) rows."
-
-        Write-Output "Inserting DataTable into SQL..."
-        Insert-DataIntoSQL -dataTable $dataTable -sqlServer $sqlServer -database $database
-        Write-Output "DataTable inserted into SQL."
+        Write-Output "Converting JSON to DataTable and inserting into SQL..."
+        ConvertAndInsertData -data $data -sqlServer $sqlServer -database $database
     }
 } catch {
     Write-Error "An error occurred: $_"

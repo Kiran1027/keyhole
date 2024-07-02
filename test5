@@ -146,7 +146,7 @@ function Insert-DataIntoSQL {
 try {
     $sqlServer = "DBADWHTest"
     $database = "DBAWarehouse"
-    
+
     Write-Output "Connecting to SQL Server..."
     $SQLConn = Get-SqlConnection -sqlServer $sqlServer -database $database
 

@@ -78,10 +78,6 @@ function Convert-JsonToDataTable {
     param (
         [psobject]$data
     )
-    # Debugging step: Output the data to ensure it is in the expected format
-    Write-Output "Data received for conversion:"
-    Write-Output ($data | ConvertTo-Json -Depth 10)
-    
     $dataTable = New-Object System.Data.DataTable
     $dataTable.Columns.Add("groupId", [System.String])
     $dataTable.Columns.Add("hostId", [System.String])
@@ -90,6 +86,10 @@ function Convert-JsonToDataTable {
     $dataTable.Columns.Add("timestamp", [System.DateTime])
     $dataTable.Columns.Add("value", [System.String])
     $dataTable.Columns.Add("units", [System.String])
+
+    if ($null -eq $data.measurements) {
+        throw "The 'measurements' property is missing or null in the provided data."
+    }
 
     foreach ($measurement in $data.measurements) {
         $name = $measurement.name
@@ -157,6 +157,9 @@ try {
         Write-Output "Invoking MongoDB Atlas API..."
         $data = Invoke-MongoDBAtlasAPI -GroupId $GroupId -SourceServer $SourceServer -credential $credential
         Write-Output "Data fetched from API."
+
+        Write-Output "Data fetched from API:"
+        Write-Output ($data | ConvertTo-Json -Depth 10)
 
         Write-Output "Converting JSON to DataTable..."
         $dataTable = Convert-JsonToDataTable -data $data

@@ -122,6 +122,11 @@ function Insert-DataIntoSQL {
         $bulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy $sqlConnection
         $bulkCopy.DestinationTableName = "MongoDB.PerformanceMetrics_STG"
         $bulkCopy.BatchSize = 1000
+
+        # Check the type and structure of the DataTable before inserting
+        Write-Output "DataTable type: $($dataTable.GetType().FullName)"
+        Write-Output "DataTable has $($dataTable.Rows.Count) rows."
+
         $bulkCopy.WriteToServer($dataTable)
     } finally {
         $sqlConnection.Close()

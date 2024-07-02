@@ -78,6 +78,9 @@ function Convert-JsonToDataTable {
     param (
         [psobject]$data
     )
+    Write-Output "Data received for conversion:"
+    Write-Output ($data | ConvertTo-Json -Depth 10)
+
     $dataTable = New-Object System.Data.DataTable
     $dataTable.Columns.Add("groupId", [System.String])
     $dataTable.Columns.Add("hostId", [System.String])
@@ -105,6 +108,11 @@ function Convert-JsonToDataTable {
             $dataTable.Rows.Add($row)
         }
     }
+
+    Write-Output "DataTable created with schema:"
+    $dataTable.Columns | ForEach-Object { Write-Output "Column: $($_.ColumnName) Type: $($_.DataType)" }
+    Write-Output "DataTable has $($dataTable.Rows.Count) rows."
+
     return $dataTable
 }
 
@@ -124,9 +132,9 @@ function Insert-DataIntoSQL {
         $bulkCopy.BatchSize = 1000
 
         # Debugging: Print the DataTable schema and rows count
-        Write-Output "DataTable schema:"
+        Write-Output "DataTable schema before insert:"
         $dataTable.Columns | ForEach-Object { Write-Output "Column: $($_.ColumnName) Type: $($_.DataType)" }
-        Write-Output "DataTable has $($dataTable.Rows.Count) rows."
+        Write-Output "DataTable has $($dataTable.Rows.Count) rows before insert."
 
         $bulkCopy.WriteToServer($dataTable)
     } finally {
@@ -163,9 +171,6 @@ try {
         Write-Output "Invoking MongoDB Atlas API..."
         $data = Invoke-MongoDBAtlasAPI -GroupId $GroupId -SourceServer $SourceServer -credential $credential
         Write-Output "Data fetched from API."
-
-        Write-Output "Data fetched from API:"
-        Write-Output ($data | ConvertTo-Json -Depth 10)
 
         Write-Output "Converting JSON to DataTable..."
         $dataTable = Convert-JsonToDataTable -data $data

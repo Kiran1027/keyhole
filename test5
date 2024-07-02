@@ -78,6 +78,10 @@ function Convert-JsonToDataTable {
     param (
         [psobject]$data
     )
+    # Debugging step: Output the data to ensure it is in the expected format
+    Write-Output "Data received for conversion:"
+    Write-Output ($data | ConvertTo-Json -Depth 10)
+    
     $dataTable = New-Object System.Data.DataTable
     $dataTable.Columns.Add("groupId", [System.String])
     $dataTable.Columns.Add("hostId", [System.String])

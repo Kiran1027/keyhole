@@ -169,7 +169,7 @@ try {
 
         Write-Output "Fetching server info for GroupID: $groupId"
         $servers = Get-ServerInfo -SQLConn $SQLConn -groupId $groupId
-        Write-Output "Servers fetched for GroupID $groupId: $servers"
+
 
         foreach ($server in $servers) {
             Write-Output "Processing server: $($server[0]) with GroupID: $($server[1])"

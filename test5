@@ -172,7 +172,7 @@ try {
         Write-Output "Servers fetched for GroupID $groupId: $servers"
 
         foreach ($server in $servers) {
-            Write-Output "Processing server: $server"
+            Write-Output "Processing server: $($server[0]) with GroupID: $($server[1])"
 
             $SourceServer = $server[0]
 

@@ -10,7 +10,7 @@ function Get-SqlConnection {
     return $SQLConn
 }
 
-# Function to get API keys and Group_IDs from the database
+# Function to get API keys and Group_IDs for all organizations from the database
 function Get-AllOrgInfo {
     param (
         [System.Data.SqlClient.SqlConnection]$SQLConn
@@ -39,7 +39,7 @@ function Get-AllOrgInfo {
     return $orgInfoList
 }
 
-# Function to get server information from the database
+# Function to get server information for a specific Group_ID from the database
 function Get-ServerInfo {
     param (
         [System.Data.SqlClient.SqlConnection]$SQLConn,

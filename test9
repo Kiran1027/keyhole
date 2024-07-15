@@ -181,3 +181,32 @@ try {
             }
         } else {
             Write-Error "No projects found for organization $orgName."
+        }
+    }
+} catch {
+    Write-Error "An error occurred: $_"  # Catch and log any errors
+} finally {
+    if ($SQLConn -and $SQLConn.State -eq 'Open') { $SQLConn.Close() }  # Ensure the SQL connection is closed
+    Write-Output "Process completed."  # Log that the process is completed
+}
+
+# Function to get all projects for an organization
+function Get-ProjectIDs {
+    param (
+        [PSCredential]$credential
+    )
+
+    try {
+        $apiURL = "https://cloud.mongodb.com/api/atlas/v2/groups"
+        $headers = @{
+            "Accept" = "application/vnd.atlas.2023-02-01+json"
+        }
+
+        $projectsData = Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
+
+        return $projectsData.results | Select-Object -ExpandProperty id
+    } catch {
+        Write-Error "An error occurred while fetching project IDs: $_"
+        return $null
+    }
+}

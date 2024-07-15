@@ -13,14 +13,14 @@ function Get-SqlConnection {
     return $SQLConn  # Return the open connection
 }
 
-# Function to get API keys and Group_IDs for all organizations from the database
+# Function to get API keys for all organizations from the database
 function Get-AllOrgInfo {
     param (
         [System.Data.SqlClient.SqlConnection]$SQLConn  # SQL connection object
     )
     $orgInfoList = @()  # Initialize an empty array to hold organization information
     # SQL query to fetch organization details
-    $query = "SELECT OrgName, PublicKey, PrivateKey, Group_ID FROM MongoDB.DimOrganization"
+    $query = "SELECT OrgName, PublicKey, PrivateKey FROM MongoDB.DimOrganization WHERE Active = 1"
     $cmd = $SQLConn.CreateCommand()  # Create a SQL command
     $cmd.CommandText = $query  # Set the SQL query
     $reader = $cmd.ExecuteReader()  # Execute the query and get the reader object
@@ -31,7 +31,6 @@ function Get-AllOrgInfo {
                 OrgName   = $reader["OrgName"]
                 PublicKey = $reader["PublicKey"]
                 PrivateKey = $reader["PrivateKey"]
-                GroupID    = $reader["Group_ID"]
             }
             # Add the hashtable to the list
             $orgInfoList += $orgInfo
@@ -160,20 +159,28 @@ try {
         $orgName = $orgInfo.OrgName
         $publicKey = $orgInfo.PublicKey
         $privateKey = $orgInfo.PrivateKey
-        $groupId = $orgInfo.GroupID
 
         # Convert the private key to a secure string and create a PSCredential object
         $password = ConvertTo-SecureString $privateKey -AsPlainText -Force
         $credential = New-Object System.Management.Automation.PSCredential ($publicKey, $password)
 
-        $servers = Get-ServerInfo -SQLConn $SQLConn -groupId $groupId  # Fetch server info for the GroupID
+        # Get all projects (Group IDs) for the organization
+        $projectIDs = Get-ProjectIDs -credential $credential
 
-        foreach ($server in $servers) {  # Iterate over each server
-            $SourceServer = $server[0]
+        if ($projectIDs -ne $null) {
+            foreach ($projectID in $projectIDs) {
+                $servers = Get-ServerInfo -SQLConn $SQLConn -groupId $projectID  # Fetch server info for the GroupID
 
-            $data = Invoke-MongoDBAtlasAPI -GroupId $groupId -SourceServer $SourceServer -credential $credential  # Invoke the API and fetch the data
+                foreach ($server in $servers) {  # Iterate over each server
+                    $SourceServer = $server[0]
 
-            ConvertAndInsertData -data $data -sqlServer $sqlServer -database $database  # Convert the JSON data to a DataTable and insert it into SQL
+                    $data = Invoke-MongoDBAtlasAPI -GroupId $projectID -SourceServer $SourceServer -credential $credential  # Invoke the API and fetch the data
+
+                    ConvertAndInsertData -data $data -sqlServer $sqlServer -database $database  # Convert the JSON data to a DataTable and insert it into SQL
+                }
+            }
+        } else {
+            Write-Error "No projects found for organization $orgName."
         }
     }
 } catch {
@@ -181,4 +188,25 @@ try {
 } finally {
     if ($SQLConn -and $SQLConn.State -eq 'Open') { $SQLConn.Close() }  # Ensure the SQL connection is closed
     Write-Output "Process completed."  # Log that the process is completed
+}
+
+# Function to get all projects for an organization
+function Get-ProjectIDs {
+    param (
+        [PSCredential]$credential
+    )
+
+    try {
+        $apiURL = "https://cloud.mongodb.com/api/atlas/v2/groups"
+        $headers = @{
+            "Accept" = "application/vnd.atlas.2023-02-01+json"
+        }
+
+        $projectsData = Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
+
+        return $projectsData.results | Select-Object -ExpandProperty id
+    } catch {
+        Write-Error "An error occurred while fetching project IDs: $_"
+        return $null
+    }
 }

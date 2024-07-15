@@ -57,21 +57,58 @@ $sqlServer = "LOUSQLWTS5038"
 $database = "DBAWarehouse"
 
 
-# Create the SQL Server connection string
-$sqlConnectionString = "server=$sqlServer;database=$database;trusted_connection=true;"
+# Fetch API Keys from DimOrganization table
+
+        $SQLConn = New-Object System.Data.SQLClient.SQLConnection
+        $SQLConn.ConnectionString = "server=$sqlServer;database=$database;trusted_connection=true;"
+        $SQLConn.Open()
 
 
-$username = "xfcwddyc"
-$password = ConvertTo-SecureString "ed06b524-717f-4405-af7e-2fc2f8a09ef2" -AsPlainText -Force
+        $SQLCmd = New-Object System.Data.SQLClient.SQLCommand
+        $SQLCmd.Connection = $SQLConn
+        $SQLCmd.CommandText = "SELECT 
+                PublicKey,
+                PrivateKey,
+                Group_ID
+            FROM MongoDB.DimOrganization 
+            WHERE OrgName = 'CAPE'"
+        
+        $ParamRset = $SQLCmd.ExecuteReader()
+
+        $ParamRset.Read() | Out-Null
+        $PubKey = $ParamRset[0]
+        $PriKey = $ParamRset[1]
+        $GroupId = $ParamRset[2]
+
+        $ParamRset.Dispose()
+        $ParamRset.Close()
+        $SQLCmd.Dispose()
+
+# truncate staging table
+
+$SQLCmd = New-Object System.Data.SQLClient.SQLCommand
+        $SQLCmd.Connection = $SQLConn
+        $SQLCmd.CommandText = "truncate table MongoDB.MongoServers_STG"
+        $SQLCmd.ExecuteNonQuery() | Out-Null 
+        $SQLCmd.Dispose()
+        $SQLConn.Close()
+        $SQLConn.Dispose()
+
+$username = "$PubKey"
+$password = ConvertTo-SecureString "$PriKey" -AsPlainText -Force
+$groupid = "$GroupId"
 $credential = New-Object System.Management.Automation.PSCredential($username, $password)
 
-$apiURL = "https://cloud.mongodb.com/api/atlas/v2/groups/65df72430687e550b470053d/processes"
+$apiURL = "https://cloud.mongodb.com/api/atlas/v2/groups/$groupid/processes"
 $headers = @{
     "Accept" = "application/vnd.atlas.2023-02-01+json"
 }
 $jsonData = Invoke-RestMethod -Uri $apiURL  -Credential $credential  -Headers $headers
 
-
+# Create the SQL Server connection string
+$sqlConnectionString = "server=$sqlServer;database=$database;trusted_connection=true;"
 
 # Insert data into SQL Server table using bulk copy
 Insert-DataIntoSqlServer -sqlConnectionString $sqlConnectionString -data $jsonData
+
+

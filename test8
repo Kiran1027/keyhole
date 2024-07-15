@@ -1,0 +1,178 @@
+# Function to insert data into SQL Server table using SqlBulkCopy
+function Insert-DataIntoSqlServer {
+    param (
+        [string]$sqlConnectionString,
+        [object]$data
+    )
+
+    try {
+        # Create a SqlConnection object
+        $sqlConnection = New-Object System.Data.SqlClient.SqlConnection($sqlConnectionString)
+        
+        # Open the SQL connection
+        $sqlConnection.Open()
+        
+        # Create a DataTable to hold the data
+        $dataTable = New-Object System.Data.DataTable
+        $dataTable.Columns.Add("hostname_port", [System.String])
+        $dataTable.Columns.Add("projectId", [System.String])
+        $dataTable.Columns.Add("replicaSetName", [System.String])
+        $dataTable.Columns.Add("nodeType", [System.String])
+        $dataTable.Columns.Add("version", [System.String])
+        $dataTable.Columns.Add("clusterCreated", [System.DateTime])
+        
+        # Add rows to the DataTable
+        $data.results | ForEach-Object {
+            $row = $dataTable.NewRow()
+            $row["hostname_port"] = $_.id
+            $row["projectId"] = $_.groupId
+            $row["replicaSetName"] = $_.replicaSetName
+            $row["nodeType"] = $_.typeName
+            $row["version"] = $_.version
+            $row["clusterCreated"] = [datetime]$_.created
+            $dataTable.Rows.Add($row) | Out-Null
+        }
+        
+        # Create a SqlBulkCopy object
+        $bulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy($sqlConnection)
+        
+        # Set the destination table name
+        $bulkCopy.DestinationTableName = "MongoDB.MongoServers_STG"
+        
+        # Set the batch size (optional)
+        $bulkCopy.BatchSize = 1000
+        
+        # Write the data to the SQL Server table
+        $bulkCopy.WriteToServer($dataTable)
+        
+        Write-Output "Data inserted into SQL Server table successfully."
+    } catch {
+        Write-Error "An error occurred while inserting data into SQL Server: $_"
+    } finally {
+        # Close the SQL connection
+        if ($sqlConnection.State -eq [System.Data.ConnectionState]::Open) {
+            $sqlConnection.Close()
+        }
+    }
+}
+
+# Function to fetch API keys from DimOrganization table
+function Get-ApiKeys {
+    param (
+        [string]$sqlConnectionString
+    )
+
+    try {
+        # Create a SQL connection
+        $SQLConn = New-Object System.Data.SQLClient.SQLConnection
+        $SQLConn.ConnectionString = $sqlConnectionString
+        $SQLConn.Open()
+
+        # Create a SQL command
+        $SQLCmd = New-Object System.Data.SQLClient.SQLCommand
+        $SQLCmd.Connection = $SQLConn
+        $SQLCmd.CommandText = @"
+            SELECT Org_ID, PublicKey, PrivateKey, Group_ID
+            FROM MongoDB.DimOrganization
+            WHERE Active = 1
+"@
+        # Execute the command and fetch the results
+        $ParamRset = $SQLCmd.ExecuteReader()
+        
+        $apiKeys = @()
+        
+        while ($ParamRset.Read()) {
+            $apiKeys += [PSCustomObject]@{
+                Org_ID     = $ParamRset["Org_ID"]
+                PublicKey  = $ParamRset["PublicKey"]
+                PrivateKey = $ParamRset["PrivateKey"]
+                Group_ID   = $ParamRset["Group_ID"]
+            }
+        }
+        
+        return $apiKeys
+    } catch {
+        Write-Error "An error occurred while fetching API keys: $_"
+        return $null
+    } finally {
+        # Close the SQL connection
+        if ($SQLConn.State -eq [System.Data.ConnectionState]::Open) {
+            $SQLConn.Close()
+        }
+    }
+}
+
+# Function to fetch MongoDB Atlas data and insert into SQL Server
+function Fetch-And-Insert-MongoDBData {
+    param (
+        [PSCredential]$credential,
+        [string]$groupId,
+        [string]$sqlConnectionString
+    )
+
+    try {
+        $apiURL = "https://cloud.mongodb.com/api/atlas/v2/groups/$groupId/processes"
+        $headers = @{
+            "Accept" = "application/vnd.atlas.2023-02-01+json"
+        }
+
+        $jsonData = Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
+
+        # Insert data into SQL Server table using bulk copy
+        Insert-DataIntoSqlServer -sqlConnectionString $sqlConnectionString -data $jsonData
+    } catch {
+        Write-Error "An error occurred while fetching or inserting MongoDB data: $_"
+    }
+}
+
+# Function to get all projects for an organization
+function Get-ProjectIDs {
+    param (
+        [PSCredential]$credential,
+        [string]$orgID
+    )
+
+    try {
+        $apiURL = "https://cloud.mongodb.com/api/atlas/v2/groups"
+        $headers = @{
+            "Accept" = "application/vnd.atlas.2023-02-01+json"
+        }
+
+        $projectsData = Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
+
+        return $projectsData.results | Where-Object { $_.orgId -eq $orgID } | Select-Object -ExpandProperty id
+    } catch {
+        Write-Error "An error occurred while fetching project IDs: $_"
+        return $null
+    }
+}
+
+# Define SQL Server connection details
+$sqlServer = "LOUSQLWTS5038"
+$database = "DBAWarehouse"
+$sqlConnectionString = "server=$sqlServer;database=$database;trusted_connection=true;"
+
+# Fetch API Keys from DimOrganization table
+$apiKeys = Get-ApiKeys -sqlConnectionString $sqlConnectionString
+
+if ($apiKeys -ne $null) {
+    foreach ($apiKey in $apiKeys) {
+        $username = $apiKey.PublicKey
+        $password = ConvertTo-SecureString $apiKey.PrivateKey -AsPlainText -Force
+        $orgID = $apiKey.Org_ID
+        $credential = New-Object System.Management.Automation.PSCredential($username, $password)
+
+        # Get all project IDs for the organization
+        $projectIDs = Get-ProjectIDs -credential $credential -orgID $orgID
+
+        if ($projectIDs -ne $null) {
+            foreach ($projectID in $projectIDs) {
+                Fetch-And-Insert-MongoDBData -credential $credential -groupId $projectID -sqlConnectionString $sqlConnectionString
+            }
+        } else {
+            Write-Error "No projects found for organization $orgID."
+        }
+    }
+} else {
+    Write-Error "No active organizations found in the DimOrganization table."
+}

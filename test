@@ -1,0 +1,43 @@
+function write-error
+{ 
+    PARAM (
+        [String]$ErrMsg,
+        [String]$TargetServer 
+)
+    try {     
+
+        [String]$ErrMsg2 = $ErrMsg.SubString(0, [math]::min(2000,$ErrMsg.length)).Replace("'", "")
+                                             
+                              $SQLStrErr = "[CollectorEngine].[SP_PowershellLoad_Error_Insert] 
+                                             @CollectorName = '$($queryResult.CollectorName)',
+                                             @TargetServer = '$($TargetServer)',
+                                             @DatabaseName = NULL,
+                                             @ErrMsg2 = '$($ErrMsg2)',
+                                             @ErrSQL = NULL
+                                             "
+                              
+                              invoke-sqlcmd -serverinstance $LogServer -database $LogDatabase -query $SQLStrErr -connectiontimeout 60 -querytimeout 600 -trustservercertificate
+     
+    }
+    catch{
+        [String]$ErrMsg = $Error.Exception.Message
+        [String]$ErrMsg2 = $ErrMsg.SubString(0, [math]::min(2000,$ErrMsg.length)).Replace("'", "")
+        
+        throw $("Error in Server - " + $TargetServer + " Error: " + $ErrMsg2)
+    }
+    finally{
+        
+    } 
+}
+
+
+PowershellLoad_Error_ID
+CollectorName
+ServerName
+DatabaseName
+LoadName
+ErrorMessage
+SQLString
+ErrorDt
+ResearchedDt
+ClosedDt

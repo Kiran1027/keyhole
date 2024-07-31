@@ -264,12 +264,10 @@ function Write-ErrorLog {
     try {
         [String]$ErrMsg2 = $ErrMsg.SubString(0, [math]::min(2000, $ErrMsg.length)).Replace("'", "")
         $SQLStrErr = @"
-            [CollectorEngine].[SP_PowershellLoad_Error_Insert]
-            @CollectorName = '$CollectorName',
-            @TargetServer = '$TargetServer',
-            @DatabaseName = NULL,
-            @ErrMsg2 = '$ErrMsg2',
-            @ErrSQL = NULL
+            INSERT INTO [CollectorEngine].[PowershellLoad_Error] 
+            (CollectorName, ServerName, DatabaseName, LoadName, ErrorMessage, SQLString, ErrorDt)
+            VALUES 
+            ('$CollectorName', '$TargetServer', NULL, 'MongoDB Load', '$ErrMsg2', NULL, GETDATE())
 "@
         invoke-sqlcmd -serverinstance $LogServer -database $LogDatabase -query $SQLStrErr -connectiontimeout 60 -querytimeout 600 -trustservercertificate
     } catch {

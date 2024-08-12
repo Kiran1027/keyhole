@@ -41,3 +41,21 @@ SQLString
 ErrorDt
 ResearchedDt
 ClosedDt
+
+$Cert= New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+$Cert.Import("Path of tls certificate.pfx" ,"Certificate Password", 'DefaultKeySet')
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$Headers =@{}
+$Headers["X-Vault-Namespace"] = "Namespace Name" #Devns,Intns,Qans,Testns,Prodns
+$Vault_key = Invoke-WebRequest -Uri "https://qa-itvault.humana.com/v1/auth/cert/login" -Method Post -Certificate $cert -Headers $Headers -ContentType "application/json"
+$Clienttoken= $Vault_key | ConvertFrom-Json #Client token returned by Vault
+
+$Header =@{}
+$Header["X-Vault-Namespace"] = "Namespace Name"
+$Header["X-Vault-Token"] = $Clienttoken.auth.client_token
+
+$Vault_locations = Invoke-WebRequest -Uri "https://qa-itvault.humana.com/v1/secret/data/Secretpath" -Method Get -Headers $Header -ContentType "application/json"
+$Mydata=$Vault_locations | ConvertFrom-Json
+Write-Host $Mydata.data.data   #Your secrets
+

@@ -1,0 +1,138 @@
+#!/bin/bash
+
+# Define the mongod user
+MONGO_USER="mongod"
+
+# Update the system
+sudo yum update -y
+
+# Create mongod user if it doesn't exist
+if ! id -u $MONGO_USER > /dev/null 2>&1; then
+    sudo useradd -m -s /bin/bash $MONGO_USER
+fi
+
+# Configure ulimits for mongod user
+ULIMITS_FILE="/etc/security/limits.d/99-mongodb.conf"
+
+echo "Configuring ulimits for $MONGO_USER..."
+
+sudo bash -c "cat > $ULIMITS_FILE <<EOF
+# MongoDB production recommended ulimits
+$MONGO_USER soft nproc 64000
+$MONGO_USER hard nproc 64000
+$MONGO_USER soft nofile 64000
+$MONGO_USER hard nofile 64000
+$MONGO_USER soft memlock unlimited
+$MONGO_USER hard memlock unlimited
+EOF"
+
+# Modify sysctl settings for MongoDB
+SYSCTL_FILE="/etc/sysctl.d/99-mongodb.conf"
+
+echo "Configuring sysctl settings for MongoDB..."
+
+sudo bash -c "cat > $SYSCTL_FILE <<EOF
+# MongoDB production recommended sysctl settings
+vm.swappiness = 1
+vm.dirty_ratio = 15
+vm.dirty_background_ratio = 5
+net.core.somaxconn = 4096
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_keepalive_time = 120
+net.ipv4.tcp_keepalive_intvl = 30
+net.ipv4.tcp_keepalive_probes = 9
+fs.file-max = 98000
+kernel.pid_max = 64000
+kernel.threads-max = 64000
+vm.max_map_count = 131060
+EOF"
+
+# Apply the sysctl settings
+sudo sysctl -p $SYSCTL_FILE
+
+# Turn off Transparent Huge Pages (THP)
+echo "Disabling Transparent Huge Pages (THP)..."
+sudo bash -c "echo 'never' > /sys/kernel/mm/transparent_hugepage/enabled"
+sudo bash -c "echo 'never' > /sys/kernel/mm/transparent_hugepage/defrag"
+
+# Create a service to disable THP on boot
+THP_SERVICE="/etc/systemd/system/disable-thp.service"
+
+sudo bash -c "cat > $THP_SERVICE <<EOF
+[Unit]
+Description=Disable Transparent Huge Pages (THP)
+After=sysinit.target local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+
+sudo systemctl daemon-reload
+sudo systemctl enable disable-thp
+
+# Configure readahead for the storage mount point
+STORAGE_MOUNT="/u01"
+READAHEAD_VALUE=16
+
+echo "Configuring readahead for $STORAGE_MOUNT..."
+
+sudo blockdev --setra $READAHEAD_VALUE $STORAGE_MOUNT
+echo "ACTION==\"add|change\", KERNEL==\"$(basename $STORAGE_MOUNT)\", ATTR{bdi/read_ahead_kb}=\"$READAHEAD_VALUE\"" | sudo tee -a /etc/udev/rules.d/85-readahead.rules
+
+# Set the disk scheduler to cfq for SSDs or virtualized drives in guest VMs
+echo "Configuring disk scheduler to 'cfq'..."
+sudo bash -c "echo 'cfq' > /sys/block/$(basename $STORAGE_MOUNT)/queue/scheduler"
+
+# Disable NUMA
+echo "Disabling NUMA (setting vm.zone_reclaim_mode to 0)..."
+sudo bash -c "echo 0 > /proc/sys/vm/zone_reclaim_mode"
+
+# Ensure mongod service starts at boot
+sudo systemctl enable mongod
+
+# Mount the storage with noatime option using XFS filesystem
+echo "Mounting /u01 with noatime using XFS..."
+sudo umount /u01
+sudo mount -o noatime /dev/$(basename $STORAGE_MOUNT) /u01
+echo "/dev/$(basename $STORAGE_MOUNT) /u01 xfs defaults,noatime 0 0" | sudo tee -a /etc/fstab
+
+echo "Configuration completed. Please restart the system for all changes to take effect."
+
+
+===========================================================================================================================================================================
+
+/etc/systemd/system/mongod1.service:
+
+
+[Unit]
+Description=MongoDB Database Server - Mongod1
+After=network.target
+
+[Service]
+User=mongod
+ExecStart=/usr/bin/mongod --config /etc/mongod1.conf
+PIDFile=/var/run/mongodb/mongod1.pid
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
+
+===============================================================================
+
+# Reload systemd to recognize the new service files
+sudo systemctl daemon-reload
+
+# Enable and start the first MongoDB instance
+sudo systemctl enable mongod1
+sudo systemctl start mongod1
+
+# Enable and start the second MongoDB instance
+sudo systemctl enable mongod2
+sudo systemctl start mongod2
+

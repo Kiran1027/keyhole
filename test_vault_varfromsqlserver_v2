@@ -1,0 +1,346 @@
+# Function to fetch Vault variables from SQL Server
+# This function connects to the SQL Server, runs a query to retrieve Vault-related configuration 
+# (Vault address, namespace, path, and certificate details), and returns those details as a hashtable.
+function Get-VaultVariablesFromSQL {
+    param (
+        [string]$sqlConnectionString  # Connection string for SQL Server connection
+    )
+
+    # SQL query to retrieve Vault configuration from the cert_table
+    $query = "SELECT vaultAddress, vaultNamespace, vaultPath, CertFullPath, CertName FROM vault.cert_table"
+    $vaultVariables = @{}  # Hashtable to store Vault variables
+
+    try {
+        # Create and open a connection to SQL Server using the provided connection string
+        $sqlConnection = New-Object System.Data.SqlClient.SqlConnection($sqlConnectionString)
+        $sqlConnection.Open()
+
+        # Prepare the SQL command and execute the query to fetch Vault variables
+        $sqlCommand = $sqlConnection.CreateCommand()
+        $sqlCommand.CommandText = $query
+        $sqlReader = $sqlCommand.ExecuteReader()
+
+        # Read the results of the query and populate the hashtable with the Vault configuration
+        if ($sqlReader.Read()) {
+            $vaultVariables.vaultAddress = $sqlReader["vaultAddress"]
+            $vaultVariables.vaultNamespace = $sqlReader["vaultNamespace"]
+            $vaultVariables.vaultPath = $sqlReader["vaultPath"]
+            $vaultVariables.certPath = Join-Path $sqlReader["CertFullPath"] $sqlReader["CertName"]
+        }
+        $sqlReader.Close()  # Close the SQL reader once the data is fetched
+    } catch {
+        # Log any errors that occur during the query execution
+        Write-Error "An error occurred while fetching Vault variables from SQL Server: $_"
+    } finally {
+        # Ensure that the SQL connection is closed after execution
+        if ($sqlConnection.State -eq [System.Data.ConnectionState]::Open) {
+            $sqlConnection.Close()
+        }
+    }
+
+    # Return the hashtable containing the Vault variables
+    return $vaultVariables
+}
+
+# Function to insert server data into SQL Server table using SqlBulkCopy
+# This function inserts a large amount of server data into a SQL Server table using bulk operations.
+function Insert-ServerDataIntoSqlServer {
+    param (
+        [string]$sqlConnectionString,  # Connection string to SQL Server
+        [object]$data  # Data object containing MongoDB server details
+    )
+
+    try {
+        # Create and open the SQL connection
+        $sqlConnection = New-Object System.Data.SqlClient.SqlConnection($sqlConnectionString)
+        $sqlConnection.Open()
+
+        # Create a DataTable to hold the server data, defining its structure
+        $dataTable = New-Object System.Data.DataTable
+        $dataTable.Columns.Add("hostname_port", [System.String])
+        $dataTable.Columns.Add("projectId", [System.String])
+        $dataTable.Columns.Add("replicaSetName", [System.String])
+        $dataTable.Columns.Add("nodeType", [System.String])
+        $dataTable.Columns.Add("version", [System.String])
+        $dataTable.Columns.Add("clusterCreated", [System.DateTime])
+
+        # Iterate over the server data and populate the DataTable
+        $data.results | ForEach-Object {
+            $row = $dataTable.NewRow()
+            $row["hostname_port"] = $_.id  # MongoDB server identifier
+            $row["projectId"] = $_.groupId  # MongoDB project (group) ID
+            $row["replicaSetName"] = $_.replicaSetName  # Name of the replica set
+            $row["nodeType"] = $_.typeName  # Type of node (e.g., PRIMARY, SECONDARY)
+            $row["version"] = $_.version  # MongoDB version number
+            $row["clusterCreated"] = [datetime]$_.created  # Creation timestamp of the cluster
+            $dataTable.Rows.Add($row) | Out-Null  # Add the row to the DataTable
+        }
+
+        # Use SqlBulkCopy for efficient bulk insertion into the SQL Server table
+        $bulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy($sqlConnection)
+        $bulkCopy.DestinationTableName = "MongoDB.MongoServers_STG"  # Specify the target SQL table
+        $bulkCopy.BatchSize = 1000  # Set batch size for efficient insert operations
+
+        # Write the DataTable to the SQL Server table
+        $bulkCopy.WriteToServer($dataTable)
+
+        # Output success message
+        Write-Output "Server data inserted into SQL Server table successfully."
+    } catch {
+        # Capture and log errors that occur during the insertion process
+        Write-Error "An error occurred while inserting server data into SQL Server: $_"
+        Write-ErrorLog -ErrMsg $_.Exception.Message -TargetServer $sqlConnection.DataSource -CollectorName "Insert-ServerDataIntoSqlServer"
+    } finally {
+        # Ensure the SQL connection is closed after operation
+        if ($sqlConnection.State -eq [System.Data.ConnectionState]::Open) {
+            $sqlConnection.Close()
+        }
+    }
+}
+
+# Function to insert performance data into SQL Server table using SqlBulkCopy
+# Converts performance data from MongoDB Atlas into a SQL Server compatible format and inserts it into a staging table.
+function ConvertAndInsertPerformanceData {
+    param (
+        [psobject]$data,  # JSON data containing performance metrics from MongoDB Atlas
+        [string]$sqlServer,  # Name of the SQL Server where data will be inserted
+        [string]$database  # Database name in SQL Server
+    )
+
+    # Create a DataTable with the required columns for performance data
+    $dataTable = New-Object System.Data.DataTable
+    $dataTable.Columns.Add("groupId", [System.String])
+    $dataTable.Columns.Add("hostId", [System.String])
+    $dataTable.Columns.Add("processId", [System.String])
+    $dataTable.Columns.Add("name", [System.String])
+    $dataTable.Columns.Add("timestamp", [System.DateTime])
+    $dataTable.Columns.Add("value", [System.String])
+    $dataTable.Columns.Add("units", [System.String])
+
+    # Check if 'measurements' property exists in the data
+    if ($null -eq $data.measurements) {
+        throw "The 'measurements' property is missing or null in the provided data."
+    }
+
+    # Iterate over the measurements and populate the DataTable
+    foreach ($measurement in $data.measurements) {
+        $name = $measurement.name  # Name of the metric (e.g., CPU usage)
+        foreach ($dataPoint in $measurement.dataPoints) {
+            # Add each data point to the DataTable
+            $row = $dataTable.NewRow()
+            $row["groupId"] = $data.groupId  # MongoDB group ID
+            $row["hostId"] = $data.hostId  # Host ID
+            $row["processId"] = $data.processId  # Process ID
+            $row["name"] = $name  # Metric name
+            $row["timestamp"] = [DateTime]$dataPoint.timestamp  # Timestamp of the metric
+            $row["value"] = [string]$dataPoint.value  # Metric value
+            $row["units"] = [string]$dataPoint.units  # Units of the metric (e.g., percentage)
+            $dataTable.Rows.Add($row)  # Add the row to the DataTable
+        }
+    }
+
+    # Create a SQL connection string
+    $sqlConnectionString = "Server=$sqlServer;Database=$database;Trusted_Connection=True;"
+    $sqlConnection = New-Object System.Data.SqlClient.SqlConnection $sqlConnectionString
+
+    try {
+        # Open SQL connection and insert performance data into the staging table
+        $sqlConnection.Open()
+        $bulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy $sqlConnection
+        $bulkCopy.DestinationTableName = "MongoDB.PerformanceMetrics_STG"  # Target table for bulk copy
+        $bulkCopy.BatchSize = 1000  # Set batch size for efficient data insert
+        $bulkCopy.WriteToServer($dataTable)  # Insert DataTable into SQL Server
+    } catch {
+        # Capture and log any errors during the data insertion
+        Write-Error "An error occurred while inserting performance data into SQL Server: $_"
+        Write-ErrorLog -ErrMsg $_.Exception.Message -TargetServer $sqlConnection.DataSource -CollectorName "ConvertAndInsertPerformanceData"
+    } finally {
+        # Ensure the SQL connection is closed after the operation
+        $sqlConnection.Close()
+    }
+}
+
+# Function to fetch API keys from HashiCorp Vault
+# This function authenticates with Vault using a TLS certificate and retrieves the API keys (public and private) from a specific path.
+function Get-ApiKeysFromVault {
+    param (
+        [string]$vaultAddress,  # Address of the HashiCorp Vault server
+        [string]$vaultNamespace,  # Namespace to use in Vault
+        [string]$vaultPath,  # Path to secrets in Vault
+        [string]$certPath,  # Path to the TLS certificate used for authentication
+        [string]$certPassword  # Password for the TLS certificate
+    )
+
+    try {
+        # Load the TLS certificate for Vault authentication
+        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+        $cert.Import($certPath, $certPassword, 'DefaultKeySet')
+
+        # Set security protocol to TLS 1.2
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+        # Set up headers for the Vault API request, including the namespace
+        $Headers = @{}
+        $Headers["X-Vault-Namespace"] = $vaultNamespace
+
+        # Authenticate with Vault using the certificate and retrieve a client token
+        $Vault_key = Invoke-WebRequest -Uri "$vaultAddress/v1/auth/cert/login" -Method Post -Certificate $cert -Headers $Headers -ContentType "application/json"
+        $Clienttoken = $Vault_key | ConvertFrom-Json
+
+        # Use the client token to fetch secrets from the Vault path
+        $Header = @{}
+        $Header["X-Vault-Namespace"] = $vaultNamespace
+        $Header["X-Vault-Token"] = $Clienttoken.auth.client_token
+        $Vault_locations = Invoke-WebRequest -Uri "$vaultAddress/v1/secret/data/$vaultPath" -Method Get -Headers $Header -ContentType "application/json"
+        $Mydata = $Vault_locations | ConvertFrom-Json
+
+        # Parse and return the API keys from the Vault data
+        $apiKeys = @()
+        foreach ($item in $Mydata.data.data) {
+            $apiKeys += [PSCustomObject]@{
+                Org_ID     = $item.Org_ID
+                PublicKey  = $item.PublicKey
+                PrivateKey = $item.PrivateKey
+            }
+        }
+
+        return $apiKeys
+    } catch {
+        # Log errors related to fetching API keys from Vault
+        Write-Error "An error occurred while fetching API keys from HashiCorp Vault: $_"
+        Write-ErrorLog -ErrMsg $_.Exception.Message -TargetServer $vaultAddress -CollectorName "Get-ApiKeysFromVault"
+        return $null
+    }
+}
+
+# Function to fetch MongoDB Atlas server data and insert into SQL Server
+# This function fetches data from the MongoDB Atlas API and inserts it into a SQL Server table.
+function Fetch-And-Insert-MongoDBServerData {
+    param (
+        [PSCredential]$credential,  # Credentials for MongoDB Atlas API (PublicKey, PrivateKey)
+        [string]$groupId,  # MongoDB Atlas group (project) ID
+        [string]$sqlConnectionString  # SQL Server connection string for data insertion
+    )
+
+    try {
+        # API URL to retrieve MongoDB Atlas server data
+        $apiURL = "https://cloud.mongodb.com/api/atlas/v2/groups/$groupId/processes"
+        $headers = @{
+            "Accept" = "application/vnd.atlas.2023-02-01+json"
+        }
+
+        # Fetch server data from the MongoDB Atlas API
+        $jsonData = Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
+
+        # Insert the fetched data into SQL Server using bulk copy
+        Insert-ServerDataIntoSqlServer -sqlConnectionString $sqlConnectionString -data $jsonData
+    } catch {
+        # Log errors related to fetching or inserting MongoDB server data
+        Write-Error "An error occurred while fetching or inserting MongoDB server data: $_"
+        Write-ErrorLog -ErrMsg $_.Exception.Message -TargetServer "MongoDB Atlas API" -CollectorName "Fetch-And-Insert-MongoDBServerData"
+    }
+}
+
+# Function to log errors into SQL Server
+# This function logs error messages into a SQL Server table for monitoring and troubleshooting.
+function Write-ErrorLog {
+    param (
+        [String]$ErrMsg,  # Error message to be logged
+        [String]$TargetServer,  # Target server where the error occurred
+        [String]$CollectorName  # Name of the collector process that encountered the error
+    )
+
+    try {
+        # Ensure that the error message length is capped at 2000 characters
+        [String]$ErrMsg2 = $ErrMsg.SubString(0, [math]::min(2000, $ErrMsg.length)).Replace("'", "")
+
+        # SQL query to insert the error details into the error logging table
+        $SQLStrErr = @"
+            INSERT INTO [CollectorEngine].[PowershellLoad_Error] 
+            (CollectorName, ServerName, DatabaseName, LoadName, ErrorMessage, SQLString, ErrorDt)
+            VALUES 
+            ('$CollectorName', '$TargetServer', NULL, 'MongoDB Load', '$ErrMsg2', NULL, GETDATE())
+"@
+
+        # Execute the error log insert query
+        invoke-sqlcmd -serverinstance $LogServer -database $LogDatabase -query $SQLStrErr -connectiontimeout 60 -querytimeout 600 -trustservercertificate
+    } catch {
+        # Handle and throw error if error logging fails
+        [String]$ErrMsg = $Error.Exception.Message
+        [String]$ErrMsg2 = $ErrMsg.SubString(0, [math]::min(2000, $ErrMsg.length)).Replace("'", "")
+        throw $("Error in Server - " + $TargetServer + " Error: " + $ErrMsg2)
+    }
+}
+
+# Main script
+
+# Define SQL Server and log server parameters
+$sqlServer = "DBADWHTest"  # Define the SQL Server name
+$database = "DBAWarehouse"  # Define the database name
+$sqlConnectionString = "server=$sqlServer;database=$database;trusted_connection=true;"
+
+$LogServer = "LogServerName"  # Define the log server name
+$LogDatabase = "LogDatabaseName"  # Define the log database name
+
+try {
+    # Fetch Vault variables from SQL Server
+    $vaultVariables = Get-VaultVariablesFromSQL -sqlConnectionString $sqlConnectionString
+
+    if ($vaultVariables -ne $null) {
+        $vaultAddress = $vaultVariables.vaultAddress
+        $vaultNamespace = $vaultVariables.vaultNamespace
+        $vaultPath = $vaultVariables.vaultPath
+        $certPath = $vaultVariables.certPath
+        $certPassword = "YourCertificatePassword"  # This can be hard-coded or fetched from a secure location
+
+        # Fetch API keys from HashiCorp Vault
+        $apiKeys = Get-ApiKeysFromVault -vaultAddress $vaultAddress -vaultNamespace $vaultNamespace -vaultPath $vaultPath -certPath $certPath -certPassword $certPassword
+
+        if ($apiKeys -ne $null) {
+            foreach ($apiKey in $apiKeys) {
+                $username = $apiKey.PublicKey
+                $password = ConvertTo-SecureString $apiKey.PrivateKey -AsPlainText -Force
+                $credential = New-Object System.Management.Automation.PSCredential($username, $password)
+
+                # Fetch all project IDs for the organization
+                $projectIDs = Get-ProjectIDs -credential $credential
+
+                if ($projectIDs -ne $null) {
+                    foreach ($projectID in $projectIDs) {
+                        # Fetch and insert MongoDB server data
+                        Fetch-And-Insert-MongoDBServerData -credential $credential -groupId $projectID -sqlConnectionString $sqlConnectionString
+
+                        # Fetch server info for the GroupID
+                        $servers = Get-ServerInfo -SQLConn $SQLConn -groupId $projectID
+
+                        foreach ($server in $servers) {  # Iterate over each server
+                            $SourceServer = $server[0]
+
+                            # Invoke the API and fetch the performance data
+                            $data = Invoke-MongoDBAtlasAPI -GroupId $projectID -SourceServer $SourceServer -credential $credential
+
+                            # Convert the JSON data to a DataTable and insert it into SQL
+                            ConvertAndInsertPerformanceData -data $data -sqlServer $sqlServer -database $database
+                        }
+                    }
+                } else {
+                    Write-Error "No projects found for organization with PublicKey $username."
+                }
+            }
+        } else {
+            Write-Error "No active organizations found in the Vault."
+        }
+    } else {
+        Write-Error "Failed to fetch Vault variables from SQL Server."
+    }
+} catch {
+    Write-Error "An error occurred: $_"  # Catch and log any errors
+    Write-ErrorLog -ErrMsg $_.Exception.Message -TargetServer $sqlServer -CollectorName "Main Script"
+} finally {
+    # Ensure the SQL connection is closed after operation
+    if ($SQLConn -and $SQLConn.State -eq 'Open') { 
+        $SQLConn.Close() 
+    }
+
+    Write-Output "Process completed."  # Log that the process is completed
+}

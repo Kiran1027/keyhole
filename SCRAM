@@ -1,0 +1,21 @@
+SCRAM, which stands for Salted Challenge Response Authentication Mechanism, is a security protocol used in MongoDB for password-based authentication. MongoDB supports two versions of this mechanism: SCRAM-SHA-1 and SCRAM-SHA-256, which differ primarily in the hash function they use for encryption. Here are the key differences between the two:
+
+Hash Function:
+
+SCRAM-SHA-1: Uses the SHA-1 cryptographic hash function, which generates a 160-bit hash value. SHA-1 has been widely used historically but is now considered vulnerable to collision attacks (where two different inputs produce the same hash).
+SCRAM-SHA-256: Uses the SHA-256 hash function, part of the SHA-2 family, which produces a 256-bit hash. SHA-256 is significantly more secure against collision attacks compared to SHA-1.
+Security:
+
+SCRAM-SHA-1: Less secure due to the vulnerabilities in the SHA-1 algorithm. Although still used, it's generally recommended to upgrade to more secure hash functions due to potential security risks.
+SCRAM-SHA-256: Provides a higher level of security and is resistant to more types of cryptographic attacks. This makes it a better choice for environments where security is a critical concern.
+Compatibility:
+
+SCRAM-SHA-1: Supported by older clients and servers, which can make it necessary in environments where legacy systems need to be supported.
+SCRAM-SHA-256: Requires clients and servers that support SHA-256. Some older systems may not support this mechanism without upgrades or patches.
+Performance:
+
+Both mechanisms are fairly similar in performance for authentication purposes, though SCRAM-SHA-256 might require slightly more computational resources due to the more complex hash function. This difference is generally minimal and not a significant factor in choosing between them.
+Recommendation:
+
+MongoDB recommends using SCRAM-SHA-256 for new applications due to its enhanced security features. It's advisable to migrate existing applications that use SCRAM-SHA-1 to SCRAM-SHA-256 when possible.
+When configuring MongoDB, choosing the right SCRAM mechanism will depend on your security requirements and the capabilities of your client and server infrastructure. For maximum security, SCRAM-SHA-256 is the recommended choice.

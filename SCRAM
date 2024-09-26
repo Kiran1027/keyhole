@@ -72,3 +72,17 @@ function Get-VaultConfigAndApiKeys {
 }
 
  
+ConvertFrom-Json : Cannot bind argument to parameter 'InputObject' because it is null.
+At line:43 char:45
++         $Clienttoken = $Vault_key.Content | ConvertFrom-Json
++                                             ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidData: (:) [ConvertFrom-Json], ParameterBindingValidationException
+    + FullyQualifiedErrorId : ParameterArgumentValidationErrorNullNotAllowed,Microsoft.PowerShell.Commands.ConvertFromJsonCommand
+ 
+Get-VaultConfigAndApiKeys : Error fetching API keys from Vault: Object reference not set to an instance of an object.
+At line:203 char:16
++ ...  $apiKeys = Get-VaultConfigAndApiKeys -sqlConnectionString $sqlConnec ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
+    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,Get-VaultConfigAndApiKeys
+ 

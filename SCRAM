@@ -4,4 +4,71 @@ At line:196 char:16
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
     + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,Get-VaultConfigAndApiKeys
+
+
+
+
+function Get-VaultConfigAndApiKeys {
+    param (
+        [string]$sqlConnectionString
+    )
+
+    # Fetch Vault configuration from SQL Server
+    $query = "SELECT CertFullPath, CertServer, CertPswd, CertName, CertDesc, vaultAddress, vaultNamespace, vaultPath FROM Vault.Cert"
+    $vaultVariables = @{}
+    $sqlConnection = New-Object System.Data.SqlClient.SqlConnection($sqlConnectionString)
+    $sqlConnection.Open()
+    $sqlCommand = $sqlConnection.CreateCommand()
+    $sqlCommand.CommandText = $query
+    $sqlReader = $sqlCommand.ExecuteReader()
+
+    if ($sqlReader.Read()) {
+        $vaultVariables.vaultAddress = $sqlReader["vaultAddress"]
+        $vaultVariables.vaultNamespace = $sqlReader["vaultNamespace"]
+        $vaultVariables.vaultPath = $sqlReader["vaultPath"]
+        $certPath = Join-Path -Path $sqlReader["CertFullPath"] -ChildPath $sqlReader["CertName"]
+        $certPassword = $sqlReader["CertPswd"]
+    } else {
+        Write-Error "Failed to read Vault configuration from SQL Server."
+        $sqlReader.Close()
+        $sqlConnection.Close()
+        return $null
+    }
+    $sqlReader.Close()
+    $sqlConnection.Close()
+
+    # Authenticate with Vault using the TLS certificate
+    try {
+        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+        $cert.Import($certPath, $certPassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+        $Headers = @{
+            "X-Vault-Namespace" = $vaultVariables.vaultNamespace
+        }
+        $Vault_key = Invoke-RestMethod -Uri "$($vaultVariables.vaultAddress)/v1/auth/cert/login" -Method Post -Certificate $cert -Headers $Headers -ContentType "application/json"
+        $Clienttoken = $Vault_key.Content | ConvertFrom-Json
+
+        $Header = @{
+            "X-Vault-Namespace" = $vaultVariables.vaultNamespace
+            "X-Vault-Token"     = $Clienttoken.auth.client_token
+        }
+        $Vault_locations = Invoke-RestMethod -Uri "$($vaultVariables.vaultAddress)$($vaultVariables.vaultPath)" -Method Get -Headers $Header -ContentType "application/json"
+        $Mydata = $Vault_locations.Content | ConvertFrom-Json
+
+        $apiKeys = @()
+        foreach ($item in $Mydata.data.data) {
+            $apiKeys += [PSCustomObject]@{
+                Org_ID     = $item.Org_ID
+                PublicKey  = $item.PublicKey
+                PrivateKey = $item.PrivateKey
+            }
+        }
+    } catch {
+        Write-Error "Error fetching API keys from Vault: $_"
+        return $null
+    }
+    return $apiKeys
+}
+
  

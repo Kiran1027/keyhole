@@ -59,3 +59,11 @@ $Vault_locations = Invoke-WebRequest -Uri "https://qa-itvault.humana.com/v1/secr
 $Mydata=$Vault_locations | ConvertFrom-Json
 Write-Host $Mydata.data.data   #Your secrets
 
+[CertFullPath]
+      ,[CertServer]
+      ,[CertPswd]
+      ,[CertName]
+      ,[CertDesc]
+      ,[vaultAddress]
+      ,[vaultNamespace]
+      ,[vaultPath]

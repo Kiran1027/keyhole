@@ -85,4 +85,29 @@ At line:203 char:16
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
     + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,Get-VaultConfigAndApiKeys
+
+
+# Define the path to the certificate and its password
+$certPath = "C:\path\to\your\certificate.pfx"
+$certPassword = ConvertTo-SecureString -String "your_certificate_password" -AsPlainText -Force
+
+# Load the certificate
+$certificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($certPath, $certPassword)
+
+# Vault API endpoint for login
+$vaultUrl = "https://your-vault-server:8200/v1/auth/cert/login"
+
+# Create the header (if needed, typically for TLS this may not be required as the cert itself authenticates)
+$headers = @{
+    Accept = "application/json"
+}
+
+# Make the API request
+try {
+    $response = Invoke-RestMethod -Uri $vaultUrl -Method Post -Certificate $certificate -Headers $headers
+    "Authentication successful. Token: " + $response.auth.client_token
+} catch {
+    "Error: " + $_.Exception.Message
+}
+
  

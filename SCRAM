@@ -111,3 +111,9 @@ try {
 }
 
  
+Invoke-WebRequest : {"errors":["permission denied"]}
+At line:15 char:13
++ $response = Invoke-WebRequest -Method Get -Headers $headers -Uri $uri
++             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [Invoke-WebRequest], WebException
+    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.InvokeWebRequestCommand

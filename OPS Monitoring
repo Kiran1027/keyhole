@@ -32,3 +32,16 @@ Set alerts for query execution times exceeding expected durations. This helps id
 
 5. Backup Alerts
 Set alerts for backup success or failure to ensure your data is backed up regularly. Failed backups or slow backup times can jeopardize data recovery plans.
+
+
+
+Dedicated mongos Instances for BI: Allocate specific mongos instances for BI queries to isolate resource-intensive BI tasks from live application operations.
+Resource Optimization: Optimize BI-dedicated mongos instances for read-heavy operations, ensuring appropriate memory allocation and connection pool configuration.
+Load Balancing:
+Use the least connections strategy to route BI queries to the mongos instances with fewer active connections.
+Implement geographical load balancing to route queries to the nearest data center to reduce latency.
+Geographical Distribution: Place mongos instances across data centers near the data or BI tool users to minimize large data transfers and improve query speed.
+Replication Lag Considerations: Ensure minimal replication lag between primary and secondary nodes for near-real-time BI reports.
+Failover and Redundancy: Set up intelligent failover mechanisms to automatically reroute traffic to healthy mongos instances in case of node or data center failure.
+Query Optimization: Index commonly queried fields like date ranges and tenant-specific keys to improve query performance.
+Use Secondary Nodes for BI: Route BI queries to secondary nodes in the MongoDB replica set to offload read operations from primary nodes​

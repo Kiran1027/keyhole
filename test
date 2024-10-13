@@ -267,6 +267,28 @@ function Invoke-MongoDBAtlasAPI {
     # Invoke the API and return the result
     return Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
 }
+# Function to log errors into SQL Server
+function Write-ErrorLog {
+    param (
+        [String]$ErrMsg,
+        [String]$TargetServer,
+        [String]$CollectorName
+    )
+    try {
+        [String]$ErrMsg2 = $ErrMsg.SubString(0, [math]::min(2000, $ErrMsg.length)).Replace("'", "")
+        $SQLStrErr = @"
+            INSERT INTO [CollectorEngine].[PowershellLoad_Error] 
+            (CollectorName, ServerName, DatabaseName, LoadName, ErrorMessage, SQLString, ErrorDt)
+            VALUES 
+            ('$CollectorName', '$TargetServer', NULL, 'MongoDB Load', '$ErrMsg2', NULL, GETDATE())
+"@
+        invoke-sqlcmd -serverinstance $LogServer -database $LogDatabase -query $SQLStrErr -connectiontimeout 60 -querytimeout 600 -trustservercertificate
+    } catch {
+        [String]$ErrMsg = $Error.Exception.Message
+        [String]$ErrMsg2 = $ErrMsg.SubString(0, [math]::min(2000, $ErrMsg.length)).Replace("'", "")
+        throw $("Error in Server - " + $TargetServer + " Error: " + $ErrMsg2)
+    }
+}
 
 # Main script
 try {
@@ -318,6 +340,7 @@ try {
     }
 } catch {
     Write-Error "An error occurred: $_"  # Catch and log any errors
+Write-ErrorLog -ErrMsg $_.Exception.Message -TargetServer $sqlServer -CollectorName "Main Script"
 } finally {
     if ($SQLConn -and $SQLConn.State -eq 'Open') { $SQLConn.Close() }  # Ensure the SQL connection is closed
     Write-Output "Process completed."  # Log that the process is completed

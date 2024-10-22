@@ -1,3 +1,119 @@
+# Function to insert server data into SQL Server table using SqlBulkCopy
+function Insert-ServerDataIntoSqlServer {
+    param (
+        [string]$sqlConnectionString,
+        [object]$data
+    )
+
+    try {
+        # Create a SqlConnection object
+        $sqlConnection = New-Object System.Data.SqlClient.SqlConnection($sqlConnectionString)
+        
+        # Open the SQL connection
+        $sqlConnection.Open()
+        
+        # Create a DataTable to hold the data
+        $dataTable = New-Object System.Data.DataTable
+        $dataTable.Columns.Add("hostname_port", [System.String])
+        $dataTable.Columns.Add("projectId", [System.String])
+        $dataTable.Columns.Add("replicaSetName", [System.String])
+        $dataTable.Columns.Add("nodeType", [System.String])
+        $dataTable.Columns.Add("version", [System.String])
+        $dataTable.Columns.Add("clusterCreated", [System.DateTime])
+        
+        # Add rows to the DataTable
+        $data.results | ForEach-Object {
+            $row = $dataTable.NewRow()
+            $row["hostname_port"] = $_.id
+            $row["projectId"] = $_.groupId
+            $row["replicaSetName"] = $_.replicaSetName
+            $row["nodeType"] = $_.typeName
+            $row["version"] = $_.version
+            $row["clusterCreated"] = [datetime]$_.created
+            $dataTable.Rows.Add($row) | Out-Null
+        }
+        
+        # Create a SqlBulkCopy object
+        $bulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy($sqlConnection)
+        
+        # Set the destination table name
+        $bulkCopy.DestinationTableName = "MongoDB.MongoServers_STG"
+        
+        # Set the batch size (optional)
+        $bulkCopy.BatchSize = 1000
+        
+        # Write the data to the SQL Server table
+        $bulkCopy.WriteToServer($dataTable)
+        
+        Write-Output "Server data inserted into SQL Server table successfully."
+    } catch {
+        Write-Error "An error occurred while inserting server data into SQL Server: $_"
+        throw "An error occurred while inserting server data into SQL Server: $_"
+    } finally {
+        # Close the SQL connection
+        if ($sqlConnection.State -eq [System.Data.ConnectionState]::Open) {
+            $sqlConnection.Close()
+        }
+    }
+}
+
+# Function to insert performance data into SQL Server table using SqlBulkCopy
+function ConvertAndInsertPerformanceData {
+    param (
+        [psobject]$data,  # JSON data from the API
+        [string]$sqlServer,  # SQL Server name
+        [string]$database  # Database name
+    )
+
+    # Initialize a new DataTable with the required columns
+    $dataTable = New-Object System.Data.DataTable
+    $dataTable.Columns.Add("groupId", [System.String])
+    $dataTable.Columns.Add("hostId", [System.String])
+    $dataTable.Columns.Add("processId", [System.String])
+    $dataTable.Columns.Add("name", [System.String])
+    $dataTable.Columns.Add("timestamp", [System.DateTime])
+    $dataTable.Columns.Add("value", [System.String])
+    $dataTable.Columns.Add("units", [System.String])
+
+    # Check if the 'measurements' property is present in the data
+    if ($null -eq $data.measurements) {
+        throw "The 'measurements' property is missing or null in the provided data."
+    }
+
+    # Iterate over each measurement in the data
+    foreach ($measurement in $data.measurements) {
+        $name = $measurement.name  # Get the name of the measurement
+        # Iterate over each data point in the measurement
+        foreach ($dataPoint in $measurement.dataPoints) {
+            # Create a new row in the DataTable and populate it with the data point values
+            $row = $dataTable.NewRow()
+            $row["groupId"] = $data.groupId
+            $row["hostId"] = $data.hostId
+            $row["processId"] = $data.processId
+            $row["name"] = $name
+            $row["timestamp"] = [DateTime]$dataPoint.timestamp
+            $row["value"] = [string]$dataPoint.value
+            $row["units"] = [string]$dataPoint.units
+            $dataTable.Rows.Add($row)  # Add the row to the DataTable
+        }
+    }
+
+    # Create a SQL connection string and a new SQL connection object
+    $sqlConnectionString = "Server=$sqlServer;Database=$database;Trusted_Connection=True;"
+    $sqlConnection = New-Object System.Data.SqlClient.SqlConnection $sqlConnectionString
+    try {
+        $sqlConnection.Open()  # Open the SQL connection
+        $bulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy $sqlConnection
+        $bulkCopy.DestinationTableName = "MongoDB.PerformanceMetrics_STG"  # Set the destination table for the bulk copy
+        $bulkCopy.BatchSize = 1000  # Set the batch size for the bulk copy
+
+        $bulkCopy.WriteToServer($dataTable)  # Write the DataTable to the SQL Server
+    } finally {
+        $sqlConnection.Close()  # Ensure the SQL connection is closed
+    }
+}
+
+
 # Function to fetch Vault configuration and API keys from SQL Server and Vault
 function Get-VaultConfigAndApiKeys {
     param (
@@ -32,124 +148,36 @@ function Get-VaultConfigAndApiKeys {
         $Headers = @{
             "X-Vault-Namespace" = $vaultVariables.vaultNamespace
         }
-        $Vault_key = Invoke-RestMethod -Uri "$($vaultVariables.vaultAddress)/v1/auth/cert/login" -Method Post -Certificate $cert -Headers $Headers -ContentType "application/json"
-        $Clienttoken = $Vault_key.Content | ConvertFrom-Json
+        $Vault_key = Invoke-RestMethod -Uri "$($vaultVariables.vaultAddress)/auth/cert/login" -Method Post -Certificate $cert -Headers $Headers -ContentType "application/json"
+        $Clienttoken = $Vault_key 
 
-        $Header = @{
+        $Headers = @{
+
+            "Accept" = "application/json"
             "X-Vault-Namespace" = $vaultVariables.vaultNamespace
             "X-Vault-Token"     = $Clienttoken.auth.client_token
         }
-        $Vault_locations = Invoke-RestMethod -Uri "$($vaultVariables.vaultAddress)$($vaultVariables.vaultPath)" -Method Get -Headers $Header -ContentType "application/json"
-        $Mydata = $Vault_locations.Content | ConvertFrom-Json
+
+        $uri = "$($vaultVariables.vaultAddress)/$($vaultVariables.vaultPath)"
+        $Vault_locations = Invoke-RestMethod -Method Get -Headers $Headers -Uri $uri
+        $Mydata = $Vault_locations.data.data 
 
         $apiKeys = @()
-        foreach ($item in $Mydata.data.data) {
             $apiKeys += [PSCustomObject]@{
-                Org_ID     = $item.Org_ID
-                PublicKey  = $item.PublicKey
-                PrivateKey = $item.PrivateKey
+                Org_ID     = $Mydata.Org_ID
+                PublicKey  = $Mydata.PublicKey
+                PrivateKey = $Mydata.PrivateKey
             }
-        }
     } catch {
-        Write-Error "Error fetching API keys from Vault: $_"
-        return $null
+        Write-Error "Error fetching API keys from Vault: $_.Exception"
+        throw "Error fetching API keys from Vault: $_.Exception"
     }
     return $apiKeys
 }
 
-# Function to insert server data into SQL Server table using SqlBulkCopy
-function Insert-ServerDataIntoSqlServer {
-    param (
-        [string]$sqlConnectionString,
-        [object]$data
-    )
-
-    try {
-        $sqlConnection = New-Object System.Data.SqlClient.SqlConnection($sqlConnectionString)
-        $sqlConnection.Open()
-        $dataTable = New-Object System.Data.DataTable
-        $dataTable.Columns.Add("hostname_port", [System.String])
-        $dataTable.Columns.Add("projectId", [System.String])
-        $dataTable.Columns.Add("replicaSetName", [System.String])
-        $dataTable.Columns.Add("nodeType", [System.String])
-        $dataTable.Columns.Add("version", [System.String])
-        $dataTable.Columns.Add("clusterCreated", [System.DateTime])
-
-        $data.results | ForEach-Object {
-            $row = $dataTable.NewRow()
-            $row["hostname_port"] = $_.id
-            $row["projectId"] = $_.groupId
-            $row["replicaSetName"] = $_.replicaSetName
-            $row["nodeType"] = $_.typeName
-            $row["version"] = $_.version
-            $row["clusterCreated"] = [datetime]$_.created
-            $dataTable.Rows.Add($row) | Out-Null
-        }
-
-        $bulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy($sqlConnection)
-        $bulkCopy.DestinationTableName = "MongoDB.MongoServers_STG"
-        $bulkCopy.BatchSize = 1000
-        $bulkCopy.WriteToServer($dataTable)
-        Write-Output "Server data inserted into SQL Server table successfully."
-    } catch {
-        Write-Error "An error occurred while inserting server data into SQL Server: $_"
-    } finally {
-        if ($sqlConnection.State -eq [System.Data.ConnectionState]::Open) {
-            $sqlConnection.Close()
-        }
-    }
-}
-
-# Function to insert performance data into SQL Server table using SqlBulkCopy
-function ConvertAndInsertPerformanceData {
-    param (
-        [psobject]$data,
-        [string]$sqlServer,
-        [string]$database
-    )
-
-    $dataTable = New-Object System.Data.DataTable
-    $dataTable.Columns.Add("groupId", [System.String])
-    $dataTable.Columns.Add("hostId", [System.String])
-    $dataTable.Columns.Add("processId", [System.String])
-    $dataTable.Columns.Add("name", [System.String])
-    $dataTable.Columns.Add("timestamp", [System.DateTime])
-    $dataTable.Columns.Add("value", [System.String])
-    $dataTable.Columns.Add("units", [System.String])
-
-    if ($null -eq $data.measurements) {
-        throw "The 'measurements' property is missing or null in the provided data."
-    }
-
-    foreach ($measurement in $data.measurements) {
-        $name = $measurement.name
-        foreach ($dataPoint in $measurement.dataPoints) {
-            $row = $dataTable.NewRow()
-            $row["groupId"] = $data.groupId
-            $row["hostId"] = $data.hostId
-            $row["processId"] = $data.processId
-            $row["name"] = $name
-            $row["timestamp"] = [DateTime]$dataPoint.timestamp
-            $row["value"] = [string]$dataPoint.value
-            $row["units"] = [string]$dataPoint.units
-            $dataTable.Rows.Add($row)
-        }
-    }
-
-    $sqlConnectionString = "Server=$sqlServer;Database=$database;Trusted_Connection=True;"
-    $sqlConnection = New-Object System.Data.SqlClient.SqlConnection $sqlConnectionString
-    try {
-        $sqlConnection.Open()
-        $bulkCopy = New-Object System.Data.SqlClient.SqlBulkCopy $sqlConnection
-        $bulkCopy.DestinationTableName = "MongoDB.PerformanceMetrics_STG"
-        $bulkCopy.BatchSize = 1000
-        $bulkCopy.WriteToServer($dataTable)
-    } finally {
-        $sqlConnection.Close()
-    }
-}
 
 # Function to fetch MongoDB Atlas server data and insert into SQL Server
+#Atlas API documentation link:https://www.mongodb.com/docs/atlas/reference/api-resources-spec/v2/#tag/Monitoring-and-Logs/operation/listAtlasProcesses
 function Fetch-And-Insert-MongoDBServerData {
     param (
         [PSCredential]$credential,
@@ -164,13 +192,17 @@ function Fetch-And-Insert-MongoDBServerData {
         }
 
         $jsonData = Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
+
+        # Insert data into SQL Server table using bulk copy
         Insert-ServerDataIntoSqlServer -sqlConnectionString $sqlConnectionString -data $jsonData
     } catch {
         Write-Error "An error occurred while fetching or inserting MongoDB server data: $_"
+        throw "An error occurred while fetching or inserting MongoDB server data: $_"
     }
 }
 
 # Function to get all projects for an organization
+#Atlas API documentation link:https://www.mongodb.com/docs/atlas/reference/api-resources-spec/v2/#tag/Projects/operation/listProjects
 function Get-ProjectIDs {
     param (
         [PSCredential]$credential
@@ -183,35 +215,141 @@ function Get-ProjectIDs {
         }
 
         $projectsData = Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
+
         return $projectsData.results | Select-Object -ExpandProperty id
     } catch {
         Write-Error "An error occurred while fetching project IDs: $_"
-        return $null
+        #return $null
+        throw "An error occurred while fetching project IDs: $_"
+    }
+}
+
+# Function to get server information for a specific Group_ID from the database
+function Get-ServerInfo {
+    param (
+        [System.Data.SqlClient.SqlConnection]$SQLConn,  # SQL connection object
+        [string]$groupId  # Group ID to filter servers
+    )
+    $servers = @()  # Initialize an empty array to hold server information
+    # SQL query to fetch server details for a specific Group ID
+    $query = "SELECT HostName_Port, GroupId FROM MongoDB.MongoServers_STG WHERE GroupId = '$groupId'"
+    $cmd = $SQLConn.CreateCommand()  # Create a SQL command
+    $cmd.CommandText = $query  # Set the SQL query
+    $reader = $cmd.ExecuteReader()  # Execute the query and get the reader object
+    try {
+        while ($reader.Read()) {
+            # Add each server's information as an array to the list
+            $servers += ,@($reader["HostName_Port"], $reader["GroupId"])
+        }
+    } finally {
+        $reader.Close()  # Ensure the reader is closed
+    }
+    return $servers  # Return the list of servers
+}
+
+# Function to invoke MongoDB Atlas API and get performance data
+#Mongodb Atlas API documentation link: https://www.mongodb.com/docs/atlas/reference/api-resources-spec/v2/#tag/Monitoring-and-Logs/operation/getHostMeasurements
+function Invoke-MongoDBAtlasAPI {
+    param (
+        [string]$GroupId,  # Group ID for the MongoDB Atlas API
+        [string]$SourceServer,  # Source server for the MongoDB Atlas API
+        [PSCredential]$credential  # Credentials for the MongoDB Atlas API
+    )
+    # Define the time range for the API query
+    $currentDate = Get-Date
+    $startDate = $currentDate.AddDays(-1).Date
+    $endDate = $currentDate.Date.AddDays(1)
+    $startDateISO = $startDate.ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $endDateISO = $endDate.ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+    # Construct the API URL with the defined parameters
+    $apiURL = "https://cloud.mongodb.com/api/atlas/v2/groups/$GroupId/processes/$SourceServer/measurements?granularity=PT1H&start=$startDateISO&end=$endDateISO"
+    $headers = @{
+        "Accept" = "application/vnd.atlas.2023-02-01+json"  # Define the Accept header for the API request
+    }
+    # Invoke the API and return the result
+    return Invoke-RestMethod -Uri $apiURL -Credential $credential -Headers $headers
+}
+# Function to log errors into SQL Server
+function Write-ErrorLog {
+    param (
+        [String]$ErrMsg,
+        [String]$TargetServer,
+        [String]$CollectorName,
+        [String]$LogServer,
+        [String]$LogDatabase
+    )
+    try {
+        [String]$ErrMsg2 = $ErrMsg.SubString(0, [math]::min(2000, $ErrMsg.length)).Replace("'", "")
+        $SQLStrErr = @"
+            INSERT INTO [CollectorEngine].[PowershellLoad_Error] 
+            (CollectorName, ServerName, DatabaseName, LoadName, ErrorMessage, SQLString, ErrorDt)
+            VALUES 
+            ('$CollectorName', '$TargetServer', NULL, 'MongoDB Load', '$ErrMsg2', NULL, GETDATE())
+"@
+        invoke-sqlcmd -serverinstance $LogServer -database $LogDatabase -query $SQLStrErr -connectiontimeout 60 -querytimeout 600 -trustservercertificate
+    } catch {
+        [String]$ErrMsg = $Error.Exception.Message
+        [String]$ErrMsg2 = $ErrMsg.SubString(0, [math]::min(2000, $ErrMsg.length)).Replace("'", "")
+        throw $("Error in Server - " + $TargetServer + " Error: " + $ErrMsg2)
     }
 }
 
 # Main script
 try {
-    $sqlConnectionString = "server=DBADWHTest;database=DBAWarehouse;trusted_connection=true;"
+    $sqlServer = "DBADWHTest"  # Define the SQL Server name
+    $database = "DBAWarehouse"  # Define the database name
+    $LogServer = "DBADWHTest"
+    $LogDatabase = "DBAWarehouse"
+
+    $sqlConnectionString = "server=$sqlServer;database=$database;trusted_connection=true;"
+
+    # Get the SQL connection
+    $SQLConn = New-Object System.Data.SqlClient.SqlConnection
+    $SQLConn.ConnectionString = $sqlConnectionString
+    $SQLConn.Open()
+
+    # Fetch API Keys from DimOrganization table
     $apiKeys = Get-VaultConfigAndApiKeys -sqlConnectionString $sqlConnectionString
 
     if ($apiKeys -ne $null) {
         foreach ($apiKey in $apiKeys) {
-            $publicKey = $apiKey.PublicKey
-            $privateKey = $apiKey.PrivateKey
-            $credential = New-Object System.Management.Automation.PSCredential ($publicKey, (ConvertTo-SecureString $privateKey -AsPlainText -Force))
+            $username = $apiKey.PublicKey
+            $password = ConvertTo-SecureString $apiKey.PrivateKey -AsPlainText -Force
+            $credential = New-Object System.Management.Automation.PSCredential($username, $password)
 
-            # Fetch and process data for each project ID
+            # Get all project IDs for the organization
             $projectIDs = Get-ProjectIDs -credential $credential
-            foreach ($projectID in $projectIDs) {
-                Fetch-And-Insert-MongoDBServerData -credential $credential -groupId $projectID -sqlConnectionString $sqlConnectionString
+
+            if ($projectIDs -ne $null) {
+                foreach ($projectID in $projectIDs) {
+                    # Fetch and insert MongoDB server data
+                    Fetch-And-Insert-MongoDBServerData -credential $credential -groupId $projectID -sqlConnectionString $sqlConnectionString
+
+                    # Fetch server info for the GroupID
+                    $servers = Get-ServerInfo -SQLConn $SQLConn -groupId $projectID
+
+                    foreach ($server in $servers) {  # Iterate over each server
+                        $SourceServer = $server[0]
+
+                        # Invoke the API and fetch the performance data
+                        $data = Invoke-MongoDBAtlasAPI -GroupId $projectID -SourceServer $SourceServer -credential $credential
+
+                        # Convert the JSON data to a DataTable and insert it into SQL
+                        ConvertAndInsertPerformanceData -data $data -sqlServer $sqlServer -database $database
+                    }
+                }
+            } else {
+                Write-Error "No projects found for organization with PublicKey $username."
             }
         }
     } else {
-        Write-Error "Failed to fetch API keys from Vault."
+        Write-Error "No active organizations found in the DimOrganization table."
     }
 } catch {
-    Write-Error "An error occurred: $_"
+    #Write-Error "An error occurred: $_"  # Catch and log any errors
+Write-ErrorLog -ErrMsg $_.Exception.Message -TargetServer $sqlServer -CollectorName "Main Script"
 } finally {
-    Write-Output "Process completed."
+    if ($SQLConn -and $SQLConn.State -eq 'Open') { $SQLConn.Close() }  # Ensure the SQL connection is closed
+    Write-Output "Process completed."  # Log that the process is completed
 }

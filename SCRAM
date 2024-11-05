@@ -1,119 +1,137 @@
-Get-VaultConfigAndApiKeys : Error fetching API keys from Vault: {"errors":["client certificate must be supplied"]}
-At line:196 char:16
-+ ...  $apiKeys = Get-VaultConfigAndApiKeys -sqlConnectionString $sqlConnec ...
-+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
-    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,Get-VaultConfigAndApiKeys
-
-
-
-
-function Get-VaultConfigAndApiKeys {
-    param (
-        [string]$sqlConnectionString
-    )
-
-    # Fetch Vault configuration from SQL Server
-    $query = "SELECT CertFullPath, CertServer, CertPswd, CertName, CertDesc, vaultAddress, vaultNamespace, vaultPath FROM Vault.Cert"
-    $vaultVariables = @{}
-    $sqlConnection = New-Object System.Data.SqlClient.SqlConnection($sqlConnectionString)
-    $sqlConnection.Open()
-    $sqlCommand = $sqlConnection.CreateCommand()
-    $sqlCommand.CommandText = $query
-    $sqlReader = $sqlCommand.ExecuteReader()
-
-    if ($sqlReader.Read()) {
-        $vaultVariables.vaultAddress = $sqlReader["vaultAddress"]
-        $vaultVariables.vaultNamespace = $sqlReader["vaultNamespace"]
-        $vaultVariables.vaultPath = $sqlReader["vaultPath"]
-        $certPath = Join-Path -Path $sqlReader["CertFullPath"] -ChildPath $sqlReader["CertName"]
-        $certPassword = $sqlReader["CertPswd"]
-    } else {
-        Write-Error "Failed to read Vault configuration from SQL Server."
-        $sqlReader.Close()
-        $sqlConnection.Close()
-        return $null
-    }
-    $sqlReader.Close()
-    $sqlConnection.Close()
-
-    # Authenticate with Vault using the TLS certificate
-    try {
-        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
-        $cert.Import($certPath, $certPassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-        $Headers = @{
-            "X-Vault-Namespace" = $vaultVariables.vaultNamespace
-        }
-        $Vault_key = Invoke-RestMethod -Uri "$($vaultVariables.vaultAddress)/v1/auth/cert/login" -Method Post -Certificate $cert -Headers $Headers -ContentType "application/json"
-        $Clienttoken = $Vault_key.Content | ConvertFrom-Json
-
-        $Header = @{
-            "X-Vault-Namespace" = $vaultVariables.vaultNamespace
-            "X-Vault-Token"     = $Clienttoken.auth.client_token
-        }
-        $Vault_locations = Invoke-RestMethod -Uri "$($vaultVariables.vaultAddress)$($vaultVariables.vaultPath)" -Method Get -Headers $Header -ContentType "application/json"
-        $Mydata = $Vault_locations.Content | ConvertFrom-Json
-
-        $apiKeys = @()
-        foreach ($item in $Mydata.data.data) {
-            $apiKeys += [PSCustomObject]@{
-                Org_ID     = $item.Org_ID
-                PublicKey  = $item.PublicKey
-                PrivateKey = $item.PrivateKey
-            }
-        }
-    } catch {
-        Write-Error "Error fetching API keys from Vault: $_"
-        return $null
-    }
-    return $apiKeys
-}
-
- 
-ConvertFrom-Json : Cannot bind argument to parameter 'InputObject' because it is null.
-At line:43 char:45
-+         $Clienttoken = $Vault_key.Content | ConvertFrom-Json
-+                                             ~~~~~~~~~~~~~~~~
-    + CategoryInfo          : InvalidData: (:) [ConvertFrom-Json], ParameterBindingValidationException
-    + FullyQualifiedErrorId : ParameterArgumentValidationErrorNullNotAllowed,Microsoft.PowerShell.Commands.ConvertFromJsonCommand
- 
-Get-VaultConfigAndApiKeys : Error fetching API keys from Vault: Object reference not set to an instance of an object.
-At line:203 char:16
-+ ...  $apiKeys = Get-VaultConfigAndApiKeys -sqlConnectionString $sqlConnec ...
-+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
-    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,Get-VaultConfigAndApiKeys
-
-
-# Define the path to the certificate and its password
-$certPath = "C:\path\to\your\certificate.pfx"
-$certPassword = ConvertTo-SecureString -String "your_certificate_password" -AsPlainText -Force
-
-# Load the certificate
-$certificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($certPath, $certPassword)
-
-# Vault API endpoint for login
-$vaultUrl = "https://your-vault-server:8200/v1/auth/cert/login"
-
-# Create the header (if needed, typically for TLS this may not be required as the cert itself authenticates)
-$headers = @{
-    Accept = "application/json"
-}
-
-# Make the API request
-try {
-    $response = Invoke-RestMethod -Uri $vaultUrl -Method Post -Certificate $certificate -Headers $headers
-    "Authentication successful. Token: " + $response.auth.client_token
-} catch {
-    "Error: " + $_.Exception.Message
-}
-
- 
-Invoke-WebRequest : {"errors":["permission denied"]}
-At line:15 char:13
-+ $response = Invoke-WebRequest -Method Get -Headers $headers -Uri $uri
-+             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [Invoke-WebRequest], WebException
-    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.InvokeWebRequestCommand
+DIRTY_FILL_RATIO
+DB_DATA_SIZE_TOTAL
+DOCUMENT_METRICS_RETURNED
+EXTRA_INFO_PAGE_FAULTS
+GLOBAL_LOCK_CURRENT_QUEUE_READERS
+OPCOUNTER_QUERY
+PROCESS_CPU_CHILDREN_KERNEL
+SYSTEM_CPU_IOWAIT
+MAX_SYSTEM_NORMALIZED_CPU_STEAL
+SYSTEM_MEMORY_BUFFERS
+SWAP_USAGE_USED
+FTS_PROCESS_VIRTUAL_MEMORY
+FTS_DISK_USAGE
+ASSERT_USER
+OP_EXECUTION_TIME_WRITES
+TICKETS_AVAILABLE_WRITE
+SYSTEM_NORMALIZED_CPU_USER
+MAX_SYSTEM_NORMALIZED_CPU_KERNEL
+MAX_SYSTEM_NORMALIZED_CPU_NICE
+SWAP_USAGE_FREE
+MAX_SWAP_USAGE_USED
+ASSERT_WARNING
+DOCUMENT_METRICS_UPDATED
+OPCOUNTER_CMD
+OPCOUNTER_REPL_CMD
+MAX_PROCESS_CPU_USER
+MAX_PROCESS_NORMALIZED_CPU_USER
+SYSTEM_NORMALIZED_CPU_NICE
+MAX_SYSTEM_CPU_IRQ
+MAX_SYSTEM_NORMALIZED_CPU_USER
+MAX_SYSTEM_MEMORY_SHARED
+OPCOUNTER_TTL_DELETED
+NETWORK_BYTES_IN
+OPCOUNTER_UPDATE
+OP_EXECUTION_TIME_READS
+OPLOG_MASTER_TIME
+MAX_SYSTEM_CPU_NICE
+CURSORS_TOTAL_TIMED_OUT
+DB_STORAGE_TOTAL
+QUERY_TARGETING_SCANNED_PER_RETURNED
+TICKETS_AVAILABLE_READS
+SYSTEM_CPU_STEAL
+FTS_PROCESS_RESIDENT_MEMORY
+CACHE_USED_BYTES
+CONNECTIONS
+MEMORY_RESIDENT
+QUERY_EXECUTOR_SCANNED_OBJECTS
+PROCESS_NORMALIZED_CPU_KERNEL
+MAX_PROCESS_CPU_CHILDREN_KERNEL
+MAX_PROCESS_NORMALIZED_CPU_CHILDREN_KERNEL
+SYSTEM_NETWORK_OUT
+MAX_SYSTEM_CPU_SOFTIRQ
+MAX_SYSTEM_NORMALIZED_CPU_SOFTIRQ
+FTS_PROCESS_NORMALIZED_CPU_KERNEL
+DOCUMENT_METRICS_DELETED
+NETWORK_NUM_REQUESTS
+OPCOUNTER_REPL_UPDATE
+MAX_PROCESS_CPU_KERNEL
+SYSTEM_CPU_GUEST
+SYSTEM_NORMALIZED_CPU_IRQ
+SYSTEM_MEMORY_AVAILABLE
+ASSERT_MSG
+GLOBAL_LOCK_CURRENT_QUEUE_WRITERS
+OPLOG_REPLICATION_LAG_TIME
+QUERY_EXECUTOR_SCANNED
+PROCESS_NORMALIZED_CPU_CHILDREN_KERNEL
+SYSTEM_CPU_USER
+SYSTEM_NORMALIZED_CPU_KERNEL
+SYSTEM_NORMALIZED_CPU_GUEST
+SYSTEM_NORMALIZED_CPU_STEAL
+SWAP_IO_IN
+SWAP_IO_OUT
+MAX_SYSTEM_NORMALIZED_CPU_IOWAIT
+SYSTEM_MEMORY_SHARED
+SYSTEM_MEMORY_CACHED
+FTS_PROCESS_CPU_KERNEL
+ASSERT_REGULAR
+OPCOUNTER_GETMORE
+OPCOUNTER_INSERT
+PROCESS_CPU_CHILDREN_USER
+SYSTEM_CPU_SOFTIRQ
+SYSTEM_NETWORK_IN
+MAX_SYSTEM_NETWORK_OUT
+MAX_SYSTEM_MEMORY_AVAILABLE
+MAX_SYSTEM_MEMORY_BUFFERS
+FTS_PROCESS_CPU_USER
+CACHE_BYTES_WRITTEN_FROM
+DB_DATA_SIZE_TOTAL_WO_SYSTEM
+DOCUMENT_METRICS_INSERTED
+GLOBAL_LOCK_CURRENT_QUEUE_TOTAL
+OPCOUNTER_REPL_INSERT
+QUERY_TARGETING_SCANNED_OBJECTS_PER_RETURNED
+PROCESS_NORMALIZED_CPU_USER
+SYSTEM_CPU_KERNEL
+MAX_SYSTEM_CPU_GUEST
+SYSTEM_MEMORY_FREE
+MAX_SYSTEM_MEMORY_USED
+MAX_SWAP_USAGE_FREE
+PROCESS_CPU_KERNEL
+MAX_PROCESS_NORMALIZED_CPU_CHILDREN_USER
+SYSTEM_CPU_NICE
+SYSTEM_CPU_IRQ
+SYSTEM_NORMALIZED_CPU_IOWAIT
+MAX_SYSTEM_CPU_STEAL
+MAX_SYSTEM_MEMORY_CACHED
+MEMORY_VIRTUAL
+OPCOUNTER_REPL_DELETE
+OPLOG_MASTER_LAG_TIME_DIFF
+PROCESS_NORMALIZED_CPU_CHILDREN_USER
+MAX_PROCESS_NORMALIZED_CPU_KERNEL
+SYSTEM_NORMALIZED_CPU_SOFTIRQ
+MAX_SYSTEM_NORMALIZED_CPU_GUEST
+MAX_SWAP_IO_IN
+MAX_SYSTEM_MEMORY_FREE
+FTS_PROCESS_SHARED_MEMORY
+FTS_PROCESS_NORMALIZED_CPU_USER
+CURSORS_TOTAL_OPEN
+MEMORY_MAPPED
+OPCOUNTER_DELETE
+OPERATIONS_SCAN_AND_ORDER
+MAX_PROCESS_CPU_CHILDREN_USER
+MAX_SYSTEM_NETWORK_IN
+MAX_SWAP_IO_OUT
+CACHE_FILL_RATIO
+NETWORK_BYTES_OUT
+OPLOG_RATE_GB_PER_HOUR
+SYSTEM_MEMORY_USED
+CACHE_BYTES_READ_INTO
+CACHE_DIRTY_BYTES
+OP_EXECUTION_TIME_COMMANDS
+OPLOG_SLAVE_LAG_MASTER_TIME
+MAX_SYSTEM_CPU_KERNEL
+MAX_SYSTEM_CPU_IOWAIT
+DB_INDEX_SIZE_TOTAL
+PROCESS_CPU_USER
+MAX_SYSTEM_CPU_USER
+MAX_SYSTEM_NORMALIZED_CPU_IRQ
